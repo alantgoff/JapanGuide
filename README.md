@@ -1,5 +1,7 @@
 # Japan Guide
 
+### → [alantgoff.github.io/JapanGuide](https://alantgoff.github.io/JapanGuide/)
+
 A stylised point-cloud map of Japan for planning a trip — and for handing to friends who are about to go.
 
 Sumi ink on washi paper. The country is drawn as a field of ink dots, denser where the cities are; Mount Fuji is a radial cone of points, Lake Biwa is a hole in the cloud. Vermilion marks are personal recommendations, and the whole guide travels in a single link.
@@ -56,4 +58,4 @@ Set the title, the opening note, the vertical characters and the seal character 
 
 ## Serving it
 
-Any static host works, or open the file directly. To publish it with GitHub Pages: **Settings → Pages → Deploy from a branch → `main` / root**.
+Published with GitHub Pages from `main` at the repository root, so a push to `main` redeploys it. Any other static host works too, or just open `index.html` directly — there is nothing to build and nothing to fetch.
