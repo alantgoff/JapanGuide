@@ -1654,14 +1654,25 @@ function drawGraticule(){
   bx.stroke();bx.restore();
 }
 
+/* Past the handover this sheet is empty: the cloud has faded out, the drawn
+   geography has stood aside for the survey, and the graticule is gone with them.
+   Clearing a retina-sized canvas and re-scanning the point grid to draw nothing is
+   the largest thing left in a street-zoom frame, so notice the blank case and stop.
+   Cleared once on the way in, then left alone until something is owed to it. */
+var baseBlank=false;
 function renderBase(){
+  var s=V.s,ink=inkFade(),geo=geoFade();
+  if(ink>=1&&geo>=1&&1-tileFade()<=.02){
+    if(!baseBlank){bx.clearRect(0,0,W,H);baseBlank=true}
+    return;
+  }
+  baseBlank=false;
   bx.clearRect(0,0,W,H);
   drawGraticule();
   var m=0.04*(1/V.s)*100+0.3;
   var x0=xOfS(-40),x1=xOfS(W+40),y0=yOfS(H+40),y1=yOfS(-40);
   var ci0=Math.floor(x0/CELL),ci1=Math.floor(x1/CELL),cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
   bufN[0]=bufN[1]=bufN[2]=bufN[3]=bufN[4]=bufN[5]=0;
-  var s=V.s,ink=inkFade();
   /* pass 1 — which points are on screen at this zoom */
   var vn=0;
   for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
@@ -1740,7 +1751,7 @@ function renderBase(){
      gone, because what carries this from here is the paper, the ink the survey is
      printed in, the typography and the vermilion — not a coastline that is wrong
      by kilometres. */
-  var geo=geoFade(),FILL=[1,0,0,1,1,0];
+  var FILL=[1,0,0,1,1,0];
   for(var k=0;k<6;k++){
     var cnt=bufN[k];if(!cnt)continue;
     var a=ALPHA[k]*(1-(FILL[k]?ink:geo));
