@@ -1216,6 +1216,160 @@ function buildSites(){
 buildStreets();
 buildSites();
 
+/* ===== archetypes ==========================================================
+   Twenty places were worth drawing by hand. The rest are worth drawing too, and
+   hand-authoring every one would cost more than all the rest of this map put
+   together. So the forms this country keeps repeating — a gate, a courtyard, a hall,
+   sometimes a pagoda; a torii and a honden; a keep on its stone; a grove with a path
+   through it; a lane of stalls — are named once, and take their numbers from the
+   place itself: which way the approach runs, how big the hall is, how many storeys
+   the pagoda has.
+
+   A generic temple would be a lie. A temple with this temple's orientation, extent
+   and pagoda is a drawing. And they are deliberately sparser than the hand-authored
+   twenty, so the weight of the ink says how much the guide actually knows. */
+
+function temple(lng,lat,Z,o){
+  o=o||{};
+  var w=o.w||30,d=o.d||24,r=o.rot||0,eh=o.h||12,i;
+  blob(lng,lat,o.r||110,o.n||28,7,Z[0],{conc:1.3});
+  var rows=[[0,0,w,d,r,1,{h:eh,roof:eh*1.55,bays:3.6}],
+            [0,-(d*.5+30),w*.44,10,r,1,{h:8,roof:11}]];          /* the gate */
+  /* storeys, not metres: a five-storey pagoda is about 50m and 11m across, and that
+     ratio is what makes it read as a pagoda rather than a chimney. */
+  if(o.pag)rows.push([-(w*.5+20),-16,o.pag*2.1,o.pag*2.1,r,1.3,
+                      {h:o.pag*8.8,roof:o.pag*9.9,bays:2.4}]);
+  if(o.halls)for(i=0;i<o.halls.length;i++)rows.push(o.halls[i]);
+  precinct(lng,lat,rows,7,Z[1]);
+}
+
+/* The approach and its torii are the whole difference between a shrine and a temple
+   from above, so the archetype is the same precinct with the approach made explicit. */
+function shrine(lng,lat,Z,o){
+  o=o||{};
+  var r=o.rot||0,rr=r*D2R,ax=aspect(lat),d=o.d||14;
+  blob(lng,lat,o.r||120,o.n||26,7,Z[0],{conc:1.3});
+  precinct(lng,lat,[[0,0,o.w||22,d,r,1,{h:o.h||9,roof:(o.h||9)*1.7}],
+                    [0,-(d*.5+26),12,8,r,1,{h:6,roof:8}]],7,Z[1]);
+  var L=o.app||150;
+  corridor([[lng-Math.sin(rr)*mLat(L)*ax, lat-Math.cos(rr)*mLat(L)],[lng,lat]],
+           o.appW||10,6,7,Z[1],{rail:2.4,fill:.15,ribs:o.torii||18,ribZ:Z[2],
+                                ribH:o.toriiH||8,hz:Z[2]});
+}
+
+function keep(lng,lat,Z,o){
+  o=o||{};
+  var b=o.base||14,h=o.h||30,w=o.w||24,r=o.rot||0;
+  blob(lng,lat,o.r||160,24,7,Z[0],{conc:1.4});
+  precinct(lng,lat,[[0,0,w*1.4,w*1.4,r,1,{h:b,roof:b,ridge:false,solid:.3,bays:6}],
+                    [0,0,w,w,r,1.3,{h0:b,h:h,roof:h*1.2,bays:3}]],7,Z[1]);
+}
+
+/* A lattice tower is legs and a deck. The legs drawing in as they rise is the entire
+   silhouette — four verticals would be scaffolding. */
+function tower(lng,lat,Z,o){
+  o=o||{};
+  var h=o.h||100,sp=o.base||30,ax=aspect(lat),zT=Math.max(Z[0],zLift(h)),i,j;
+  blob(lng,lat,o.r||90,18,7,Z[0],{conc:1.4});
+  for(i=0;i<4;i++){
+    var a=i/4*TAU+Math.PI/4;
+    var ex=Math.cos(a)*mLat(sp*.5)*ax, ny=Math.sin(a)*mLat(sp*.5);
+    var n=Math.max(8,Math.round(h/7));
+    for(j=0;j<=n;j++){var t=j/n;push(lng+ex*(1-t*.88), lat+ny*(1-t*.88), 7, zT, h*t)}
+  }
+  if(o.deck)for(i=0;i<24;i++){
+    var a2=i/24*TAU;
+    push(lng+Math.cos(a2)*mLat(o.deck)*ax, lat+Math.sin(a2)*mLat(o.deck), 7, zT, h*(o.deckAt||.55));
+  }
+  /* The bracing between the legs, which is what a lattice tower is, and which only
+     arrives once you are close enough for it to be more than a smudge. */
+  var zB=Math.max(zT,Z[2]);
+  for(i=0;i<4;i++){
+    var b1=i/4*TAU+Math.PI/4, b2=(i+1)/4*TAU+Math.PI/4, m=Math.max(6,Math.round(h/11));
+    for(var k=1;k<m;k++){
+      var t2=k/m, rr=mLat(sp*.5)*(1-t2*.88), hh2=h*t2;
+      /* both diagonals of each bay, which is what a lattice actually is — one alone
+         reads as a helix winding up the tower */
+      for(var dg=0;dg<2;dg++){
+        var f=(k%2)?(dg?.72:.3):(dg?.3:.72);
+        var an2=b1+(b2-b1)*f;
+        push(lng+Math.cos(an2)*rr*ax, lat+Math.sin(an2)*rr, 7, zB, hh2);
+      }
+    }
+  }
+}
+
+function grove(lng,lat,Z,o){
+  o=o||{};
+  blob(lng,lat,o.r||300,o.n||80,7,Z[0],
+       {conc:o.conc===undefined?.9:o.conc,ea:o.ea||1,eb:o.eb||1,h:o.h||16,hz:Z[2]});
+}
+
+function lane(lng,lat,Z,o){
+  o=o||{};
+  var r=(o.rot||0)*D2R,ax=aspect(lat),L=o.len||180;
+  corridor([[lng-Math.cos(r)*mLat(L*.5)*ax, lat-Math.sin(r)*mLat(L*.5)],
+            [lng+Math.cos(r)*mLat(L*.5)*ax, lat+Math.sin(r)*mLat(L*.5)]],
+           o.w||5,3.6,7,Z[1],{rail:1.6,fill:.14,ribs:o.ribs||5,ribZ:Z[2],
+                              ribH:o.h||5,hz:Z[2]});
+}
+
+/* A district whose character is that it is walled in — Akihabara, Shinsekai. */
+function blocks(lng,lat,Z,o){
+  o=o||{};
+  var n=o.n||6,rows=[],H=o.h||30;
+  for(var i=0;i<n;i++){
+    var a=i/n*TAU+.4, d=(o.r||90)*(.55+.45*((i*7)%n)/n), f=.7+.6*((i*5)%n)/n;
+    rows.push([Math.cos(a)*d, Math.sin(a)*d, o.w||24, o.d||20, (i*37)%90, 1,
+               {h:H*f, roof:H*f*1.06, bays:5}]);
+  }
+  precinct(lng,lat,rows,7,Z[1]);
+}
+
+/* Name, form, and the numbers that make it this place rather than a form. Anything
+   authored here is the same class of claim the marker already makes — this is a
+   temple, here, oriented this way, roughly this big — drawn more richly. Where that
+   would mean inventing a fact rather than reusing a form, the place keeps its
+   surroundings-only portrait instead, which is the honest answer. */
+var ARCH=[
+  ['Chureito Pagoda',            temple,{w:9,d:9,rot:24,h:8,pag:5,r:70,n:14}],
+  ['Kofuku-ji',                  temple,{w:34,d:28,rot:0,h:14,pag:5,r:150}],
+  ['Horyu-ji',                   temple,{w:28,d:22,rot:0,h:12,pag:5,r:170}],
+  ['Byodo-in',                   temple,{w:47,d:14,rot:0,h:9,r:150,
+                                         halls:[[-34,-6,12,10,0],[34,-6,12,10,0]]}],
+  ['Ryoan-ji',                   temple,{w:24,d:14,rot:0,h:7,r:130}],
+  ['Kotoku-in Great Buddha',     temple,{w:13,d:11,rot:0,h:13,r:100,n:18}],
+  ['Nikko Tosho-gu',             temple,{w:26,d:20,rot:0,h:13,pag:5,r:150}],
+  ['Kasuga Taisha',              shrine,{w:24,d:12,rot:104,h:10,app:220,torii:16,toriiH:7,r:160}],
+  ['Sumiyoshi Taisha',           shrine,{w:26,d:14,rot:0,h:11,app:170,torii:20,toriiH:8,r:150}],
+  ['Hakone Shrine',              shrine,{w:18,d:12,rot:56,h:9,app:190,torii:22,toriiH:9,r:130}],
+  ['Tokyo Tower',                tower, {h:333,base:88,deck:22,deckAt:.45,r:110}],
+  ['Tsutenkaku & Shinsekai',     tower, {h:103,base:26,deck:9,deckAt:.82,r:120}],
+  ['Umeda Sky Building',         tower, {h:173,base:52,deck:26,deckAt:.94,r:110}],
+  ['Tokyo Skytree',              null,  null],      /* already hand-authored */
+  ['Shinjuku Gyoen',             grove, {r:420,n:110,h:18,ea:1.2}],
+  ['Ueno Park',                  grove, {r:420,n:110,h:19,eb:1.3}],
+  ['Imperial Palace East Gardens',grove,{r:330,n:90,h:14}],
+  ['Oshino Hakkai',              grove, {r:180,n:44,h:11,conc:1.2}],
+  ['Owakudani',                  grove, {r:260,n:52,h:7,conc:1.5}],
+  /* The Fuji lakes are already drawn, as real polygons in LAKES walked into the
+     cloud at load. An ellipse laid over one is a worse copy of something the map
+     already has right, so these two keep the surroundings portrait — which shows
+     them the actual lake. */
+  ['Tsukiji Outer Market',       lane,  {rot:8,len:210,w:5,ribs:4.5,h:6}],
+  ['Kuromon Market',             lane,  {rot:92,len:200,w:4.5,ribs:4.5,h:6}],
+  ['Akihabara',                  blocks,{r:130,n:7,w:26,d:22,h:38}],
+  ['Tokyo National Museum',      temple,{w:60,d:26,rot:0,h:16,r:180,
+                                         halls:[[-58,-20,22,18,0],[58,-20,22,18,0]]}],
+  ['teamLab Planets',            temple,{w:34,d:26,rot:0,h:9,r:90,n:16}],
+  ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14}]
+];
+for(var ai=0;ai<ARCH.length;ai++)(function(a){
+  if(!a[1])return;
+  SITE(a[0],function(g,t,Z){a[1](g,t,Z,a[2])});
+})(ARCH[ai]);
+
+
 /* ---- fast land test ----
    The renderer masks thousands of lattice candidates per frame, so testing every
    coastline edge each time is too slow. Index edges by latitude band: a test then
@@ -2517,9 +2671,12 @@ function portrait(p,cw,ch){
   var q=function(A,t){return A[Math.min(A.length-1,Math.max(0,Math.round(t*(A.length-1))))]};
   /* Percentiles, not a bounding box. A tier-0 presence blob is 200-700m across and
      would frame Todai-ji on its halo, shrinking the Daibutsuden to a smudge. */
-  var u0=q(su,.07),u1=q(su,.93),v0=q(sg,.06),v1=q(sv,.99);
-  var sc=Math.min(cw*.86/Math.max(12,u1-u0), ch*.82/Math.max(8,v1-v0));
-  var ox2=cw/2-(u0+u1)/2*sc, oy2=ch*.94-v1*sc;
+  /* The vertical span has to run from the top of the structure to the front of the
+     ground, not from one end of the ground to the other — bounding it by the ground
+     alone frames a temple fine and sends a 333m tower straight off the top. */
+  var u0=q(su,.07),u1=q(su,.93),vTop=q(sv,.01),vBot=q(sg,.96);
+  var sc=Math.min(cw*.86/Math.max(12,u1-u0), ch*.84/Math.max(8,vBot-vTop));
+  var ox2=cw/2-(u0+u1)/2*sc, oy2=ch*.93-vBot*sc;
   var c=document.createElement('canvas');c.width=cw*2;c.height=ch*2;
   var g=c.getContext('2d');if(!g){POR[key]='';return ''}
   g.scale(2,2);
