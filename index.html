@@ -128,6 +128,9 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #detail .hd{padding:20px 22px 17px;border-bottom:1px solid var(--line);position:relative}
 #detail .cat{display:flex;align-items:center;gap:7px;margin-bottom:11px}
 #detail .cat svg{width:11px;height:11px;overflow:visible}
+/* The portrait is ink on the paper, not a picture pasted over it — no border, no
+   background, the washi shows through the gaps. */
+#detail .por{width:100%;height:auto;display:block}
 #detail h2{margin:0;font-family:var(--f-disp);font-size:24px;line-height:1.14;letter-spacing:.01em;
   font-weight:400;text-wrap:balance;padding-right:26px}
 #detail h2.mine{color:var(--shu)}
@@ -311,7 +314,11 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   #nav{bottom:auto;top:auto;bottom:130px;right:12px}
   #trip{left:12px;right:12px;bottom:12px;top:auto;width:auto;max-height:52vh;display:none;z-index:7}
   #trip.open{display:flex}
-  #detail,#pform{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:66vh;z-index:8}
+  /* The sheet was already near its limit with no picture in it, and burying the one
+     thing the reader opened the panel for would invert the point. Give it a little
+     more room and letterbox the portrait rather than pushing the buttons off. */
+  #detail,#pform{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:74vh;z-index:8}
+  #detail .por{max-height:104px;width:auto;margin:0 auto}
   #hint{display:none}
   #sheet{width:calc(100vw - 20px);max-height:88vh}
   #sheet .shd{padding:22px 22px 18px}
@@ -2431,6 +2438,109 @@ function regionName(id){
   return id==='elsewhere'?'Elsewhere':id;
 }
 
+
+/* ---- portraits ----
+   A place's picture is its own points, seen from the south-east and low instead of
+   from straight overhead. Nothing is fetched and nothing is invented: if the map does
+   not know a thing, the portrait cannot show it either. Same fillRect idiom, same ink,
+   transparent ground, so it is a drawing on the actual paper rather than an image
+   pasted over it.
+
+   The map deliberately has no depth sort — a few hundred thousand points a frame is
+   the wrong place to pay for one. A portrait is a few hundred points drawn once and
+   cached, so it can afford the sort, and that is exactly why it reads more solid than
+   the same geometry does out on the map. */
+var POR={},PORN=0,POR_YAW=28*D2R,POR_PIT=32*D2R;
+var PORSITE={};
+(function(){for(var i=0;i<AUTHORED.length;i++)if(!AUTHORED[i].missing)PORSITE[AUTHORED[i].name]=AUTHORED[i]})();
+
+function portraitPts(p){
+  var a=PORSITE[p.name],out=[],i;
+  if(a){for(i=a.i0;i<a.i1;i++)out.push(i);return out}
+  /* No authored form: draw what the map does know around it — its lanes, its river
+     bank, a neighbour's precinct. Honest, and it says something true about where a
+     place sits even when it says nothing about the building.
+     Widening rings out until it finds enough to draw, because the ground lattice is
+     generated per frame and never stored: within 200m of a quiet temple there may be
+     nothing in the arrays at all. */
+  for(var R=260;R<=2600;R*=2.4){var got=portraitNear(p,R);if(got.length>=40)return got}
+  return portraitNear(p,2600);
+}
+function portraitNear(p,R){
+  var out=[],i,dLat=R/110574,dLng=R/(110574*Math.cos(p.lat*D2R));
+  var y0=my(p.lat-dLat),y1=my(p.lat+dLat);
+  var ci0=Math.floor((p.lng-dLng)/CELL),ci1=Math.floor((p.lng+dLng)/CELL);
+  var cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
+  for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
+    var cell=GRID[ci+'|'+cj];if(!cell)continue;
+    for(i=0;i<cell.length;i++){
+      var k=cell[i];
+      if(PX[k]<p.lng-dLng||PX[k]>p.lng+dLng||PY[k]<y0||PY[k]>y1)continue;
+      out.push(k);
+    }
+  }
+  return out;
+}
+
+function portrait(p,cw,ch){
+  var key=p.name+'|'+cw+'x'+ch;
+  if(POR[key]!==undefined)return POR[key];
+  var idx=portraitPts(p);
+  if(idx.length<12){POR[key]='';return ''}
+  var ax=Math.cos(p.lat*D2R)*111320,i;
+  /* Pick the angle that shows the most. A fixed yaw looks along Pontocho and the alley
+     collapses to a line — its whole meaning is the 4.5m across it. So find the site's
+     principal axis and lay that across the frame, then swing a little off square so it
+     is a view of a thing rather than an elevation drawing of one. */
+  var mx2=0,my2=0,nn=0;
+  for(i=0;i<idx.length;i++){mx2+=(PX[idx[i]]-p.lng)*ax;my2+=(myInv(PY[idx[i]])-p.lat)*110574;nn++}
+  mx2/=nn;my2/=nn;
+  var xx=0,xy=0,yy=0;
+  for(i=0;i<idx.length;i++){
+    var ex=(PX[idx[i]]-p.lng)*ax-mx2, ny=(myInv(PY[idx[i]])-p.lat)*110574-my2;
+    xx+=ex*ex;xy+=ex*ny;yy+=ny*ny;
+  }
+  var yaw=(Math.abs(xy)<1e-9&&Math.abs(xx-yy)<1e-9)?POR_YAW:.5*Math.atan2(2*xy,xx-yy)+POR_YAW*.5;
+  var cs=Math.cos(yaw),sn=Math.sin(yaw),sp=Math.sin(POR_PIT),cp=Math.cos(POR_PIT);
+  var P2=[],su=[],sv=[],sg=[];
+  for(i=0;i<idx.length;i++){
+    var k=idx[i];
+    var e=(PX[k]-p.lng)*ax, n=(myInv(PY[k])-p.lat)*110574;
+    var hz=PH[k]*110574*Math.cos(p.lat*D2R);       /* back out of Mercator-y degrees */
+    var ru=e*cs+n*sn, rn=-e*sn+n*cs;                /* yaw about the anchor */
+    /* pitch: 90 degrees would be the plan the map already gives you, 0 a pure
+       elevation. 32 leaves enough ground to sit on and enough wall to read. */
+    P2.push([ru, -(rn*sp+hz*cp), rn, PB[k]]);
+    su.push(ru);sv.push(-(rn*sp+hz*cp));sg.push(-rn*sp);
+  }
+  su.sort(function(a,b){return a-b});sv.sort(function(a,b){return a-b});sg.sort(function(a,b){return a-b});
+  var q=function(A,t){return A[Math.min(A.length-1,Math.max(0,Math.round(t*(A.length-1))))]};
+  /* Percentiles, not a bounding box. A tier-0 presence blob is 200-700m across and
+     would frame Todai-ji on its halo, shrinking the Daibutsuden to a smudge. */
+  var u0=q(su,.07),u1=q(su,.93),v0=q(sg,.06),v1=q(sv,.99);
+  var sc=Math.min(cw*.86/Math.max(12,u1-u0), ch*.82/Math.max(8,v1-v0));
+  var ox2=cw/2-(u0+u1)/2*sc, oy2=ch*.94-v1*sc;
+  var c=document.createElement('canvas');c.width=cw*2;c.height=ch*2;
+  var g=c.getContext('2d');if(!g){POR[key]='';return ''}
+  g.scale(2,2);
+  /* The shadow first: the same points with their height taken away. Nothing else does
+     as much to stop an elevation looking like it is floating. */
+  g.globalAlpha=.11;g.fillStyle=COL.pts[7];
+  for(i=0;i<P2.length;i++)g.fillRect((P2[i][0]*sc+ox2)|0,(-P2[i][2]*sp*sc+oy2)|0,1,1);
+  P2.sort(function(a,b){return b[2]-a[2]});      /* far first — the sort the map cannot afford */
+  for(i=0;i<P2.length;i++){
+    var b=P2[i][3];
+    g.globalAlpha=ALPHA[b];g.fillStyle=COL.pts[b];
+    /* Small. A 370m market lane is thousands of points, and at any size above a
+       pixel they merge into a solid bar instead of reading as a street of stalls. */
+    var sz=Math.max(1,Math.round(SIZE[b]*1.1));
+    g.fillRect((P2[i][0]*sc+ox2)|0,(P2[i][1]*sc+oy2)|0,sz,sz);
+  }
+  PORN++;
+  POR[key]=c.toDataURL();
+  return POR[key];
+}
+
 function renderDetail(p){
   var el=document.getElementById('detail'),inTrip=trip.indexOf(p.id)>=0;
   var near=P.filter(function(q){return q.id!==p.id}).map(function(q){return{q:q,d:haversine(p,q)}})
@@ -2442,6 +2552,7 @@ function renderDetail(p){
     (p.ja?'<p class="jaline ja">'+esc(p.ja)+'</p>':'')+
     '<button id="close" aria-label="Close">×</button></div>'+
     '<div class="bd">'+
+    (function(){var d=portrait(p,278,152);return d?'<img class="por" alt="" src="'+d+'">':''})()+
     '<div><span class="tag">'+esc(regionName(p.region))+'</span>'+
       (p.day?' <span class="tag">Day trip</span>':'')+
       (p.mine?' <span class="tag mine">Yours</span>':'')+'</div>'+
