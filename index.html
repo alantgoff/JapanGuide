@@ -2120,6 +2120,7 @@ function loadTrip(){
    and only saveMine() writes that. Without this second call, adding a stop after
    you had ever saved a place was silently dropped on reload. */
 function saveTrip(){
+  normDays();   /* never persist a break that is unsorted or off the end */
   try{localStorage.setItem('japan-survey-trip',JSON.stringify(trip))}catch(e){}
   saveMine();
 }
@@ -2166,13 +2167,32 @@ function domRegion(stops){
   return best?{name:'Elsewhere',ja:'その他'}:null;
 }
 
+/* Day breaks are positions, so removing a stop has to slide the later ones back.
+   There are two ways to remove one — the × in the list, and deleting the place
+   itself out from under the itinerary — so the shift lives here rather than at
+   each call site, where the second one had been missed.
+
+   A break sits *before* a stop, so it lands before whichever stop at or after it
+   survives; if the whole tail goes, the break goes with it. */
+function removeStops(doomed){
+  var out=[],at=[],i,removed=0;
+  for(i=0;i<trip.length;i++){
+    if(doomed(trip[i])){removed++;at.push(-1);continue}
+    at.push(out.length);out.push(trip[i]);
+  }
+  if(!removed)return false;
+  var nb=[],seen={};
+  for(i=0;i<dayBreaks.length;i++){
+    var n=-1;
+    for(var q=dayBreaks[i];q<trip.length;q++)if(at[q]>=0){n=at[q];break}
+    if(n>0&&!seen[n]){seen[n]=1;nb.push(n)}
+  }
+  trip=out;dayBreaks=nb.sort(function(a,b){return a-b});
+  return true;
+}
 function toggleTrip(id){
-  var k=trip.indexOf(id);
-  if(k>=0){
-    trip.splice(k,1);
-    /* breaks are positions, so everything past the hole slides back one */
-    dayBreaks=dayBreaks.map(function(b){return b>k?b-1:b});
-  }else trip.push(id);
+  if(trip.indexOf(id)>=0)removeStops(function(x){return x===id});
+  else trip.push(id);
   saveTrip();renderTrip();needOver=true;
 }
 function moveTrip(id,dir){
@@ -2208,26 +2228,30 @@ function renderTrip(){
 
   var h='';
   days.forEach(function(idxs,di){
+    /* Carry the trip position alongside the place. Walking the two lists in
+       parallel went wrong the moment one id failed to resolve: the leg times
+       then came off a shifted array and quietly described the wrong walk. */
     var stops=[],k;
-    for(k=0;k<idxs.length;k++){var p=byId[trip[idxs[k]]];if(p)stops.push(p)}
+    for(k=0;k<idxs.length;k++){var p=byId[trip[idxs[k]]];if(p)stops.push({i:idxs[k],p:p})}
     /* Only foot legs count toward the day's walking — an intercity hop is a train,
        and folding it in would make every number meaningless. */
     var mins=0;
-    for(k=1;k<stops.length;k++)if(haversine(stops[k-1],stops[k])<=WALK_MAX)mins+=walkMin(stops[k-1],stops[k]);
-    var rg=domRegion(stops);
+    for(k=1;k<stops.length;k++)
+      if(haversine(stops[k-1].p,stops[k].p)<=WALK_MAX)mins+=walkMin(stops[k-1].p,stops[k].p);
+    var rg=domRegion(stops.map(function(s){return s.p}));
     h+='<div class="tgroup"><span class="eyebrow">Day '+(di+1)+
        (rg?' <span class="ja">'+esc(rg.ja)+'</span>':'')+'</span>'+
        '<span class="dsum mono">'+stops.length+' stop'+(stops.length===1?'':'s')+
        (mins>=1?' · '+Math.round(mins)+' min walk':'')+'</span></div>';
 
-    idxs.forEach(function(ti,k){
-      var id=trip[ti],p=byId[id];if(!p)return;
+    stops.forEach(function(st,k){
+      var ti=st.i,p=st.p,id=trip[ti];
       var opensDay=k===0&&di>0;
       h+='<div class="titem'+(p.mine?' mine':'')+'">'+
          '<button class="tsel" type="button" data-id="'+esc(id)+'">'+
            '<span class="idx">'+(ti+1)+'</span>'+
            '<span class="nm">'+esc(p.name)+
-             (k>0?'<em class="leg">'+esc(legText(stops[k-1],p))+'</em>':'')+
+             (k>0?'<em class="leg">'+esc(legText(stops[k-1].p,p))+'</em>':'')+
            '</span>'+
          '</button>'+
          '<span class="tacts">'+
@@ -2638,7 +2662,9 @@ function dropPin(px,py){
 }
 function persistUser(){
   rebuildPlaces();
-  trip=trip.filter(function(id){return byId[id]});
+  /* Deleting a place it was standing on removes it from the itinerary too, and
+     the days have to move with it. */
+  removeStops(function(id){return !byId[id]});
   saveMine();renderTrip();needOver=true;invalidate();
 }
 
