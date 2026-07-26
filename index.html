@@ -30,6 +30,9 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body
 #stage.placing{cursor:crosshair}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #paper{position:absolute;inset:0;z-index:0;pointer-events:none;mix-blend-mode:multiply;opacity:.5}
+/* Survey tiles are printed into the paper, not laid on top of it: multiply drops the
+   tile's white ground to nothing and leaves only roads, contours and hillshade. */
+#tiles{mix-blend-mode:multiply}
 #paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #grain{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:.55;mix-blend-mode:multiply}
 #grain.off{display:none}
@@ -111,6 +114,22 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #scalebar{display:flex;align-items:center;gap:8px}
 #scalebar .bar{height:4px;border-left:1px solid var(--line-strong);border-right:1px solid var(--line-strong);
   border-bottom:1px solid var(--line-strong);width:56px;transition:width .12s;display:block}
+
+/* ---- base map ---- */
+#layers{bottom:142px;right:20px;display:flex;flex-direction:column;overflow:hidden}
+#layers .lrow{display:flex}
+#layers .lchip{padding:9px 11px;font-size:10.5px;color:var(--ink-faint);white-space:nowrap;
+  border-right:1px solid var(--line);transition:color .2s,background .2s;display:flex;align-items:center;gap:5px}
+#layers .lchip:last-child{border-right:0}
+#layers .lchip:hover{color:var(--ink);background:rgba(34,31,27,.04)}
+#layers .lchip[aria-pressed="true"]{color:var(--ink);background:rgba(34,31,27,.07)}
+#layers .lchip small{font-size:10px;opacity:.7}
+/* The survey is somebody else's work and says so, but quietly — it is a credit
+   line on a drawing, not a badge. */
+#layers .lsrc{border-top:1px solid var(--line);padding:6px 11px;color:var(--ink-faint);
+  text-decoration:none;font-size:9.5px;letter-spacing:.04em}
+#layers .lsrc:hover{color:var(--ink-dim)}
+#layers .lsrc[hidden]{display:none}
 
 /* ---- zoom ---- */
 #nav{bottom:20px;right:20px;display:flex;flex-direction:column;overflow:hidden}
@@ -201,16 +220,31 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #trip .hd .n{font-family:var(--f-mono);font-size:9.5px;color:var(--ink-faint)}
 #triplist{overflow-y:auto;padding:7px 0;flex:1;min-height:0}
 #trip .empty{padding:13px 16px 15px;font-size:11.5px;line-height:1.62;color:var(--ink-faint);margin:0}
-.tgroup{padding:9px 16px 3px}
-.titem{display:flex;align-items:center;gap:10px;padding:6px 16px;width:100%;text-align:left;font-size:12px}
+.tgroup{padding:9px 16px 3px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.tgroup .dsum{font-size:9px;color:var(--ink-faint);white-space:nowrap}
+.titem{display:flex;align-items:center;padding:0 10px 0 16px;width:100%;font-size:12px}
 .titem:hover{background:var(--shu-wash)}
+.tsel{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;padding:6px 0;font-size:12px}
 .titem .idx{font-family:var(--f-mono);font-size:9.5px;color:var(--shu);width:15px;flex:none;
-  font-variant-numeric:tabular-nums}
-.titem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  font-variant-numeric:tabular-nums;align-self:flex-start;padding-top:2px}
+.titem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .titem.mine .nm{color:var(--shu)}
-.titem .x{color:var(--ink-faint);font-size:14px;width:16px;flex:none;text-align:center;opacity:0;line-height:1}
-.titem:hover .x{opacity:1}
-.titem .x:hover{color:var(--shu)}
+/* How far it is from the stop above, on foot. The number that decides whether two
+   places belong in the same afternoon. */
+.titem .leg{display:block;font-family:var(--f-mono);font-size:9px;font-style:normal;
+  color:var(--ink-faint);letter-spacing:.02em;margin-top:2px}
+.tacts{display:flex;flex:none;opacity:0;transition:opacity .15s}
+.titem:hover .tacts,.tacts:focus-within{opacity:1}
+.tb{color:var(--ink-faint);font-size:12px;width:19px;height:24px;flex:none;line-height:1;
+  display:grid;place-items:center;border-radius:2px}
+.tb:hover{color:var(--shu);background:rgba(34,31,27,.05)}
+.tb[disabled]{opacity:.25;cursor:default}
+.tb[disabled]:hover{color:var(--ink-faint);background:none}
+.tb.tday{font-family:var(--f-ja);font-size:10px}
+.tb.tday[aria-pressed="true"]{color:var(--shu)}
+/* A stop that opens a day keeps its controls showing, so you can see where the
+   days break without hunting for it with the cursor. */
+.titem:has(.tb.tday[aria-pressed="true"]) .tacts{opacity:1}
 #trip .ft{border-top:1px solid var(--line);padding:10px 16px;display:flex;justify-content:space-between;gap:8px}
 #trip .ft button{text-transform:uppercase;letter-spacing:.14em;font-size:8.5px;color:var(--ink-faint);font-weight:600}
 #trip .ft button:hover{color:var(--shu)}
@@ -289,6 +323,13 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   #legend .fchip{border-right:1px solid var(--line)}
   #readout{display:none}
   #nav{bottom:auto;top:auto;bottom:130px;right:12px}
+  /* Narrow screens have no room for a wide control sitting over the map, and the
+     kanji reads on its own — the English survives as the accessible name. */
+  #layers{bottom:252px;right:12px}
+  #layers .lchip{padding:10px 12px}
+  #layers .lchip .en{display:none}
+  #layers .lchip small{font-size:12px;opacity:1}
+  #layers .lsrc{font-size:9px;padding:5px 12px}
   #trip{left:12px;right:12px;bottom:12px;top:auto;width:auto;max-height:52vh;display:none;z-index:7}
   #trip.open{display:flex}
   #detail,#pform{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:66vh;z-index:8}
@@ -310,6 +351,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 <body>
 <div id="stage">
   <div id="paper" aria-hidden="true"></div>
+  <canvas id="tiles" aria-hidden="true"></canvas>
   <canvas id="base"></canvas>
   <canvas id="over" role="img" aria-label="A point-cloud map of Japan. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
 </div>
@@ -347,6 +389,12 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   <span class="mono" id="rdll">—</span>
   <span class="mono" id="rdz">—</span>
   <span id="scalebar" class="mono"><span class="bar" id="sbbar"></span><span id="sblbl">—</span></span>
+</div>
+
+<div class="panel" id="layers">
+  <div class="lrow" role="group" aria-label="Base map"></div>
+  <a class="lsrc mono" id="rdsrc" href="https://maps.gsi.go.jp/development/ichiran.html"
+     target="_blank" rel="noopener">出典：国土地理院</a>
 </div>
 
 <div class="panel" id="nav">
@@ -1199,6 +1247,7 @@ void main() {
 (function(){
 'use strict';
 var stage=document.getElementById('stage'),
+    tlc=document.getElementById('tiles'),tlx=tlc.getContext('2d'),
     bc=document.getElementById('base'),bx=bc.getContext('2d'),
     oc=document.getElementById('over'),ox=oc.getContext('2d');
 var W=0,H=0,dpr=1;
@@ -1258,8 +1307,13 @@ function rebuildPlaces(){
 
 /* ---- view state ---- */
 var V={cx:mx(137.6),cy:my(38.2),s:52};
-var MINS=26,MAXS=42000;
-var sel=null,hover=null,activeRegion='route',filters={},trip=[],anim=null;
+/* MAXS was 42000 — about z16, two metres a pixel, which tells you the district and
+   nothing else. 320000 is z18.8, under 30cm a pixel: which side of the street the
+   entrance is on. GSI's own imagery stops at z18, so the last stretch is
+   overzoomed and goes a little soft; that is the ordinary bargain every slippy
+   map makes, and the scale is worth it. */
+var MINS=26,MAXS=320000;
+var sel=null,hover=null,activeRegion='route',filters={},trip=[],dayBreaks=[],anim=null;
 function regionPad(id){return id==='all'?.16:id==='route'?.07:.30}
 for(var c in CATS)filters[c]=true;
 
@@ -1281,8 +1335,8 @@ var SIZE=[.8,1.1,1.0,1.05,1.45,1.15];
 function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
   W=stage.clientWidth;H=stage.clientHeight;
-  [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
-  bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
+  [tlc,bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
+  tlx.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
   dirty=true;
 }
 
@@ -1296,6 +1350,131 @@ function fit(box,pad){
   pad=pad||.16;
   var sc=Math.min(W*(1-pad)/(e-w),H*(1-pad)/(n-s));
   return {cx:(w+e)/2,cy:(s+n)/2,s:Math.max(MINS,Math.min(MAXS,sc))};
+}
+
+/* ---- survey tiles: streets and terrain ----
+   The ink cloud carries the country. It cannot carry a city — past about z10 it is
+   decorative noise, and you cannot plan a walk on it. So from there the ground
+   becomes real survey data from 地理院タイル (the Geospatial Information Authority
+   of Japan): free, keyless, and the only source that knows this coastline properly.
+
+   Nothing is fetched until you zoom past TILE_IN, so the opening view still costs
+   no network at all, and if the tiles never arrive the ink map is left untouched. */
+var TSRC={
+  pale :{url:'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',        min:2,max:18},
+  blank:{url:'https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png',       min:5,max:14},
+  hill :{url:'https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png',min:2,max:16}
+};
+var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1400,INK_OUT_1=5200;
+var layerMode='streets',jaLabels=true;
+/* The budget is per layer, not shared. Terrain is drawn first and would otherwise
+   spend the whole allowance before the street pass asks for anything, so streets —
+   the layer you actually zoomed in for — would arrive a full round late on every
+   new view. */
+var TC=new Map(),TILE_CAP=256,TILE_INFLIGHT=8,inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
+
+/* Canvas filters do the desaturating. Safari was late to them; without them the
+   pass still reads, just flatter, so detect once and carry on either way. */
+var FILT=(function(){try{tlx.filter='grayscale(1)';var ok=tlx.filter==='grayscale(1)';tlx.filter='none';return ok}catch(e){return false}})();
+
+function smoothstep(a,b,x){var t=(x-a)/(b-a);if(t<0)t=0;else if(t>1)t=1;return t*t*(3-2*t)}
+function tileFade(){return layerMode==='ink'?0:smoothstep(TILE_IN,TILE_FULL,V.s)}
+/* The ink only stands down for something that replaces it, which means streets.
+   Terrain lays hillshade *under* the drawing and the cloud stays — that is the
+   whole of what that setting offers. And offline this is 0, so a failed fetch
+   leaves the map exactly as it always was rather than as blank paper. */
+function inkFade(){return streetDrew?smoothstep(INK_OUT_0,INK_OUT_1,V.s):0}
+
+function getTile(src,z,x,y,want){
+  var k=src+'/'+z+'/'+x+'/'+y,e=TC.get(k);
+  if(e){TC.delete(k);TC.set(k,e);return e}          /* touch: Map keeps insertion order */
+  if(!want||(inflight[src]|0)>=TILE_INFLIGHT)return null;
+  if(TC.size>=TILE_CAP){
+    /* evict the oldest settled entry — dropping one mid-flight only wastes the fetch */
+    var it=TC.entries(),c;
+    while(!(c=it.next()).done)if(c.value[1].st!=='load'){TC.delete(c.value[0]);break}
+  }
+  e={img:new Image(),st:'load'};TC.set(k,e);inflight[src]=(inflight[src]|0)+1;
+  /* No crossOrigin: we never read these pixels back, and asking for CORS would
+     only add a way for the request to fail. */
+  e.img.onload =function(){e.st='ok' ;inflight[src]--;tilesArrived=true};
+  e.img.onerror=function(){e.st='err';inflight[src]--;tilesArrived=true}; /* never retried */
+  e.img.src=TSRC[src].url.replace('{z}',z).replace('{x}',x).replace('{y}',y);
+  return e;
+}
+
+/* Which tiles cover the window, and exactly where each one lands. Kept apart from
+   the painting so the geometry can be reasoned about — and checked — on its own. */
+function visibleTiles(src,z){
+  var S=TSRC[src];if(!S)return null;
+  var tz=Math.max(S.min,Math.min(S.max,z)),n=Math.pow(2,tz),dpt=360/n;
+  var X0=Math.floor((xOfS(0)+180)/dpt),X1=Math.floor((xOfS(W)+180)/dpt);
+  var Y0=Math.floor((180-yOfS(0))/dpt),Y1=Math.floor((180-yOfS(H))/dpt);
+  if(X0<0)X0=0;if(Y0<0)Y0=0;if(X1>n-1)X1=n-1;if(Y1>n-1)Y1=n-1;
+  if((X1-X0+1)*(Y1-Y0+1)>400)return null;
+  var list=[];
+  for(var X=X0;X<=X1;X++)for(var Y=Y0;Y<=Y1;Y++){
+    /* Round each edge independently. Rounding an origin and a size instead lets
+       the error accumulate, and hairlines of bare paper show between tiles. */
+    list.push({X:X,Y:Y,
+      px0:Math.round(sxOf(X*dpt-180)),px1:Math.round(sxOf((X+1)*dpt-180)),
+      py0:Math.round(syOf(180-Y*dpt)),py1:Math.round(syOf(180-(Y+1)*dpt))});
+  }
+  return {tz:tz,list:list};
+}
+
+function drawLayer(src,z,alpha,filter){
+  var v=visibleTiles(src,z);if(!v)return 0;
+  var S=TSRC[src],tz=v.tz,list=v.list;
+  /* Requesting mid-flight would queue every zoom level the camera passes through. */
+  var want=!anim,drew=0;
+  tlx.globalAlpha=alpha;if(FILT)tlx.filter=filter;
+  for(var i=0;i<list.length;i++){
+    var t=list[i],X=t.X,Y=t.Y,w=t.px1-t.px0,hgt=t.py1-t.py0;
+    var e=getTile(src,tz,X,Y,want);
+    if(e&&e.st==='ok'){tlx.drawImage(e.img,t.px0,t.py0,w,hgt);drew++;continue}
+    /* Cover the gap with an ancestor so panning stays continuous, coarse then sharp. */
+    for(var up=1;up<=4;up++){
+      var az=tz-up;if(az<S.min)break;
+      var ax=X>>up,ay=Y>>up,ae=TC.get(src+'/'+az+'/'+ax+'/'+ay);
+      if(!ae||ae.st!=='ok')continue;
+      var f=1<<up,sw=ae.img.naturalWidth/f,sh=ae.img.naturalHeight/f;
+      tlx.drawImage(ae.img,(X-(ax<<up))*sw,(Y-(ay<<up))*sh,sw,sh,t.px0,t.py0,w,hgt);
+      drew++;break;
+    }
+  }
+  if(FILT)tlx.filter='none';
+  tlx.globalAlpha=1;
+  return drew;
+}
+
+function drawTiles(){
+  tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;
+  var f=tileFade();if(f<=.002)return;
+  /* dpr in the zoom pick, so a retina screen gets tiles at its own resolution */
+  var z=Math.round(Math.log(V.s*dpr*360/256)/Math.LN2),d=0;
+  /* Terrain: lift the lit slopes clear to white so they multiply away entirely and
+     only the shadowed side prints. A hillshade that darkens everywhere is a grey
+     veil over the paper, not a drawing of the ground. */
+  d+=drawLayer('hill',z,(FILT?.45:.30)*f,'grayscale(1) contrast(.9) brightness(1.25)');
+  /* Streets: the road greys sit *above* mid-grey, so raising contrast alone drives
+     them toward white along with the paper. Duck the whole image below the pivot
+     first, then a hard contrast separates paper (clips to white, multiplies away)
+     from tarmac and lettering (fall to ink). */
+  if(layerMode==='streets'){
+    streetDrew=drawLayer(jaLabels?'pale':'blank',z,(FILT?.62:.34)*f,'grayscale(1) brightness(.72) contrast(4)');
+    d+=streetDrew;
+  }
+  tilesDrew=d;if(!d)return;
+  /* No tint pass when filters are available: grayscale has already taken the survey
+     blues and greens out, and multiplying neutral grey through warm paper warms it
+     toward sumi on its own. Painting ink over everything only greys the page.
+     Without filters the tiles keep their colours, and a wash is the cheap repair. */
+  if(!FILT){
+    tlx.globalCompositeOperation='source-atop';
+    tlx.fillStyle='rgba(34,31,27,'+(.3*f).toFixed(3)+')';tlx.fillRect(0,0,W,H);
+    tlx.globalCompositeOperation='source-over';
+  }
 }
 
 /* ---- base layer: graticule + point cloud ---- */
@@ -1314,14 +1493,18 @@ function vnoise(x,y,f){
 }
 
 function drawGraticule(){
-  var s=V.s, step=s<70?2:s<260?1:s<1100?.25:s<5000?.05:.01;
+  var s=V.s, step=s<70?2:s<260?1:s<1100?.25:s<5000?.05:s<20000?.01:.002;
+  /* The grid is scaffolding for an empty field. Once streets are under it, it is
+     just another set of lines competing with them. */
+  var ga=1-tileFade();if(ga<=.02)return;
+  bx.save();bx.globalAlpha=ga;
   bx.lineWidth=1;bx.strokeStyle=COL.line;bx.beginPath();
   var lng0=Math.floor(xOfS(0)/step)*step, lng1=xOfS(W)+step;
   for(var lng=lng0;lng<lng1;lng+=step){var px=sxOf(lng);bx.moveTo(px+.5,0);bx.lineTo(px+.5,H)}
   var latTop=yOfS(0),latBot=yOfS(H);
   var l0=Math.floor(myInv(latBot)/step)*step, l1=myInv(latTop)+step;
   for(var lat=l0;lat<l1;lat+=step){var py=syOf(my(lat));bx.moveTo(0,py+.5);bx.lineTo(W,py+.5)}
-  bx.stroke();
+  bx.stroke();bx.restore();
 }
 
 function renderBase(){
@@ -1331,7 +1514,7 @@ function renderBase(){
   var x0=xOfS(-40),x1=xOfS(W+40),y0=yOfS(H+40),y1=yOfS(-40);
   var ci0=Math.floor(x0/CELL),ci1=Math.floor(x1/CELL),cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
   bufN[0]=bufN[1]=bufN[2]=bufN[3]=bufN[4]=bufN[5]=0;
-  var s=V.s;
+  var s=V.s,ink=inkFade();
   /* pass 1 — which points are on screen at this zoom */
   var vn=0;
   for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
@@ -1362,7 +1545,7 @@ function renderBase(){
     /* How many candidates to try depends on how much of the window is land, how much
        gets thinned, and where you are — unknowable up front. So feed back the last
        frame's hit rate; it settles within a frame or two and tracks a drag live. */
-    var want=Math.min(46000,(TARGET-vn)/Math.max(.05,yieldEst)),added=0;
+    var want=Math.min(46000,(TARGET-vn)/Math.max(.05,yieldEst))*(1-ink),added=0;
     if(want>500){
       /* Only the city glows that actually overlap this window matter — usually one or two. */
       var latLo=myInv(y0),latHi=myInv(y1),nearU=[];
@@ -1404,10 +1587,17 @@ function renderBase(){
       if(tried>200)yieldEst=yieldEst*.45+(added/tried)*.55;
     }
   }
-  var zf=s<200?1:s<1400?1.35:s<8000?1.9:2.6;
+  var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2;
+  /* Ground, city and city-core are the generated body of the cloud: once real
+     streets are under them they are noise, so they go. Coast, ridge and Fuji are
+     drawn features and stay at full weight — the bay, the rivers and the hills
+     over live streets are the whole point, and they keep the hand in the drawing. */
+  var KEEP=[0,1,1,0,0,1];
   for(var k=0;k<6;k++){
     var cnt=bufN[k];if(!cnt)continue;
-    bx.globalAlpha=ALPHA[k];bx.fillStyle=COL.pts[k];
+    var a=ALPHA[k]*(KEEP[k]?1:1-.85*ink);
+    if(a<=.01)continue;
+    bx.globalAlpha=a;bx.fillStyle=COL.pts[k];
     var sz=Math.max(1,Math.round(SIZE[k]*zf)),arr=buf[k];
     for(var t=0;t<cnt;t++)bx.fillRect(arr[t*2]|0,arr[t*2+1]|0,sz,sz);
   }
@@ -1504,7 +1694,12 @@ function renderOver(){
     var cl=CITY_LABELS[i],tier=cl[4];
     if(tier===3&&s<300)continue;
     if(tier===2&&s<64)continue;
-    if(s>4200)continue;
+    /* Cities used to vanish wholesale above s=4200, which left the top of the zoom
+       range with nothing named on it at all. Retire them by weight instead: a
+       neighbourhood name outlives a prefecture one on the way in. */
+    if(tier===3&&s>6000)continue;
+    if(tier===2&&s>16000)continue;
+    if(s>60000)continue;
     var x=sxOf(mx(cl[2])),y=syOf(my(cl[3]));
     if(x<-60||x>W+60||y<-30||y>H+30)continue;
 
@@ -1539,19 +1734,25 @@ function renderOver(){
      names rather than crowding them out. Tokyo must never lose to a temple. */
   if(s>=120)for(var ri=0;ri<marks.length;ri++)rects.push([marks[ri].x-7,marks[ri].y-7,14,14]);
 
-  /* itinerary route */
+  /* Itinerary route, threaded one day at a time. Days are drawn as separate
+     strands rather than one continuous line, so an overnight jump between cities
+     doesn't read as a walk you were planning to take. */
   if(trip.length>1){
     ox.save();
     ox.strokeStyle=COL.shu;ox.globalAlpha=.42;ox.lineWidth=1.3;
     ox.setLineDash([6,4]);ox.lineDashOffset=reduce?0:-phase*.35;
-    ox.beginPath();
-    var started=false;
-    for(var t=0;t<trip.length;t++){
-      var pp=byId[trip[t]];if(!pp)continue;
-      var px=sxOf(pp.x),py=syOf(pp.y);
-      if(!started){ox.moveTo(px,py);started=true}else ox.lineTo(px,py);
-    }
-    ox.stroke();ox.restore();
+    tripDays().forEach(function(idxs){
+      if(idxs.length<2)return;
+      ox.beginPath();
+      var started=false;
+      for(var t=0;t<idxs.length;t++){
+        var pp=byId[trip[idxs[t]]];if(!pp)continue;
+        var px=sxOf(pp.x),py=syOf(pp.y);
+        if(!started){ox.moveTo(px,py);started=true}else ox.lineTo(px,py);
+      }
+      ox.stroke();
+    });
+    ox.restore();
   }
 
   /* markers */
@@ -1626,7 +1827,8 @@ function renderOver(){
 var needOver=true;
 function loop(){
   if(anim)stepAnim();
-  if(dirty){renderBase();dirty=false;needOver=true;updateReadout()}
+  if(tilesArrived){tilesArrived=false;dirty=true}
+  if(dirty){drawTiles();renderBase();dirty=false;needOver=true;updateReadout()}
   if(!reduce&&(sel!==null||trip.length>1)){phase++;needOver=true}
   if(needOver){renderOver();needOver=false}
   requestAnimationFrame(loop);
@@ -1659,7 +1861,7 @@ function zoomAt(px,py,f){
 }
 
 /* ---- readout ---- */
-var STEPS=[.05,.1,.2,.5,1,2,5,10,20,50,100,200,500,1000,2000];
+var STEPS=[.02,.05,.1,.2,.5,1,2,5,10,20,50,100,200,500,1000,2000];
 function updateReadout(){
   var lat=myInv(V.cy),kmPerPx=111.32*Math.cos(lat*D2R)/V.s;
   var target=64,best=STEPS[0];
@@ -1777,7 +1979,8 @@ function select(id,fly){
   var p=byId[id];if(!p)return;
   sel=id;needOver=true;
   if(fopen)closeForm();
-  if(fly){var minS=Math.max(V.s,2600);flyTo({cx:p.x,cy:p.y,s:minS},700)}
+  /* Land where the streets around it are legible, not merely where the mark is. */
+  if(fly){var minS=Math.max(V.s,9000);flyTo({cx:p.x,cy:p.y,s:minS},700)}
   renderDetail(p);
   setRegionChip(p.region);
 }
@@ -1854,50 +2057,149 @@ function loadTrip(){
     }).filter(function(id){return typeof id==='string'&&byId[id]});
   }catch(e){}
 }
-function saveTrip(){try{localStorage.setItem('japan-survey-trip',JSON.stringify(trip))}catch(e){}}
+/* The standalone key is still written so a guide saved by an earlier version opens
+   with its itinerary intact — but the record loadMine() actually reads is STORE,
+   and only saveMine() writes that. Without this second call, adding a stop after
+   you had ever saved a place was silently dropped on reload. */
+function saveTrip(){
+  try{localStorage.setItem('japan-survey-trip',JSON.stringify(trip))}catch(e){}
+  saveMine();
+}
+
+/* A trip is one ordered list of stops; the days are simply where you decide to
+   stop walking. Keeping the breaks as positions rather than tagging each stop
+   means reordering moves a stop between days exactly as you would expect, and a
+   guide saved before days existed still opens as one long day. */
+function normDays(){
+  var out=[],seen={},i,b;
+  for(i=0;i<dayBreaks.length;i++){
+    b=dayBreaks[i]|0;
+    if(b>0&&b<trip.length&&!seen[b]){seen[b]=1;out.push(b)}
+  }
+  dayBreaks=out.sort(function(a,b){return a-b});
+}
+function tripDays(){
+  var out=[],cur=[];
+  for(var i=0;i<trip.length;i++){
+    if(i>0&&dayBreaks.indexOf(i)>=0){out.push(cur);cur=[]}
+    cur.push(i);
+  }
+  if(cur.length)out.push(cur);
+  return out;
+}
+/* Street distance, not crow-flies. 1.3 is the usual detour factor for a dense
+   grid, and 4.5km/h is an unhurried pace with a bag on.
+
+   WALK_MAX is the question "would anyone actually walk this?", and the honest
+   answer in Tokyo is about three kilometres — past that you take the subway, and
+   quoting a two-hour walking time instead is worse than quoting nothing. */
+var WALK_DETOUR=1.30,WALK_KMH=4.5,WALK_MAX=3;
+function walkMin(a,b){return haversine(a,b)*WALK_DETOUR/WALK_KMH*60}
+function legText(a,b){
+  var straight=haversine(a,b);
+  if(straight>WALK_MAX)return (straight<10?straight.toFixed(1):String(Math.round(straight)))+' km · take the train';
+  var km=straight*WALK_DETOUR;
+  return Math.round(km/WALK_KMH*60)+' min · '+(km<1?Math.round(km*1000/10)*10+' m':km.toFixed(1)+' km');
+}
+function domRegion(stops){
+  var c={},best=null,n=0,i;
+  for(i=0;i<stops.length;i++){var r=stops[i].region;c[r]=(c[r]||0)+1;if(c[r]>n){n=c[r];best=r}}
+  for(i=0;i<REGIONS.length;i++)if(REGIONS[i].id===best)return REGIONS[i];
+  return best?{name:'Elsewhere',ja:'その他'}:null;
+}
+
 function toggleTrip(id){
   var k=trip.indexOf(id);
-  if(k>=0)trip.splice(k,1);else trip.push(id);
+  if(k>=0){
+    trip.splice(k,1);
+    /* breaks are positions, so everything past the hole slides back one */
+    dayBreaks=dayBreaks.map(function(b){return b>k?b-1:b});
+  }else trip.push(id);
+  saveTrip();renderTrip();needOver=true;
+}
+function moveTrip(id,dir){
+  var i=trip.indexOf(id),j=i+dir;
+  if(i<0||j<0||j>=trip.length)return;
+  /* The breaks stay where they are, so dragging a stop past one moves it to that
+     day — which is what the gesture looks like it should do. */
+  trip.splice(j,0,trip.splice(i,1)[0]);
+  saveTrip();renderTrip();needOver=true;
+}
+function toggleDay(id){
+  var i=trip.indexOf(id);
+  if(i<=0)return;                       /* the first stop always opens day one */
+  var k=dayBreaks.indexOf(i);
+  if(k>=0)dayBreaks.splice(k,1);else dayBreaks.push(i);
   saveTrip();renderTrip();needOver=true;
 }
 function renderTrip(){
+  normDays();
   var list=document.getElementById('triplist'),km=0,prev=null;
   for(var i=0;i<trip.length;i++){
     var q=byId[trip[i]];if(!q)continue;
     if(prev)km+=haversine(prev,q);
     prev=q;
   }
+  var days=tripDays();
   document.getElementById('tripn').textContent=trip.length?
-    trip.length+(trip.length===1?' stop':' stops')+(km>1?' · '+Math.round(km)+' km':''):'0 stops';
+    trip.length+(trip.length===1?' stop':' stops')+
+    (days.length>1?' · '+days.length+' days':'')+
+    (km>1?' · '+Math.round(km)+' km':''):'0 stops';
   document.getElementById('sheetn').textContent=trip.length;
-  if(!trip.length){list.innerHTML='<p class="empty">Nothing saved yet. Open a mark and add it — saved stops fill in, take a number, and join up in order.</p>';return}
-  var h='',known={};
-  REGIONS.forEach(function(rg){known[rg.id]=1});
-  var groups=REGIONS.filter(function(rg){return rg.id!=='all'&&rg.id!=='route'})
-    .concat([{id:'elsewhere',name:'Elsewhere',ja:'その他'}]);
-  groups.forEach(function(rg){
-    var items=trip.filter(function(id){
-      if(!byId[id])return false;
-      var r=byId[id].region;
-      return rg.id==='elsewhere'?(!known[r]||r==='elsewhere'):r===rg.id;
-    });
-    if(!items.length)return;
-    h+='<div class="tgroup"><span class="eyebrow">'+esc(rg.name)+' <span class="ja">'+esc(rg.ja)+'</span></span></div>';
-    items.forEach(function(id){
-      h+='<button class="titem'+(byId[id].mine?' mine':'')+'" data-id="'+id+'"><span class="idx">'+(trip.indexOf(id)+1)+'</span>'+
-         '<span class="nm">'+esc(byId[id].name)+'</span><span class="x" data-x="'+id+'" role="button" aria-label="Remove">×</span></button>';
+  if(!trip.length){list.innerHTML='<p class="empty">Nothing saved yet. Open a mark and add it — saved stops fill in, take a number, and join up in order. Split them into days with 日.</p>';return}
+
+  var h='';
+  days.forEach(function(idxs,di){
+    var stops=[],k;
+    for(k=0;k<idxs.length;k++){var p=byId[trip[idxs[k]]];if(p)stops.push(p)}
+    /* Only foot legs count toward the day's walking — an intercity hop is a train,
+       and folding it in would make every number meaningless. */
+    var mins=0;
+    for(k=1;k<stops.length;k++)if(haversine(stops[k-1],stops[k])<=WALK_MAX)mins+=walkMin(stops[k-1],stops[k]);
+    var rg=domRegion(stops);
+    h+='<div class="tgroup"><span class="eyebrow">Day '+(di+1)+
+       (rg?' <span class="ja">'+esc(rg.ja)+'</span>':'')+'</span>'+
+       '<span class="dsum mono">'+stops.length+' stop'+(stops.length===1?'':'s')+
+       (mins>=1?' · '+Math.round(mins)+' min walk':'')+'</span></div>';
+
+    idxs.forEach(function(ti,k){
+      var id=trip[ti],p=byId[id];if(!p)return;
+      var opensDay=k===0&&di>0;
+      h+='<div class="titem'+(p.mine?' mine':'')+'">'+
+         '<button class="tsel" type="button" data-id="'+esc(id)+'">'+
+           '<span class="idx">'+(ti+1)+'</span>'+
+           '<span class="nm">'+esc(p.name)+
+             (k>0?'<em class="leg">'+esc(legText(stops[k-1],p))+'</em>':'')+
+           '</span>'+
+         '</button>'+
+         '<span class="tacts">'+
+           '<button class="tb" type="button" data-mv="-1" data-id="'+esc(id)+'" aria-label="Move '+esc(p.name)+' earlier"'+(ti===0?' disabled':'')+'>↑</button>'+
+           '<button class="tb" type="button" data-mv="1" data-id="'+esc(id)+'" aria-label="Move '+esc(p.name)+' later"'+(ti===trip.length-1?' disabled':'')+'>↓</button>'+
+           '<button class="tb tday" type="button" data-day="'+esc(id)+'" aria-pressed="'+(opensDay?'true':'false')+'"'+
+             ' title="'+(opensDay?'Merge into the day before':'Start a new day here')+'"'+
+             ' aria-label="'+(opensDay?'Merge into the previous day':'Start a new day at '+esc(p.name))+'"'+(ti===0?' disabled':'')+'>日</button>'+
+           '<button class="tb" type="button" data-x="'+esc(id)+'" aria-label="Remove '+esc(p.name)+'">×</button>'+
+         '</span>'+
+       '</div>';
     });
   });
   list.innerHTML=h;
-  Array.prototype.forEach.call(list.querySelectorAll('.titem'),function(btn){
-    btn.onclick=function(e){
-      var x=e.target.closest('[data-x]');
-      if(x){toggleTrip(x.dataset.x);if(sel&&byId[sel])renderDetail(byId[sel]);return}
-      select(btn.dataset.id,true);
-    };
+
+  function after(){if(sel&&byId[sel])renderDetail(byId[sel])}
+  Array.prototype.forEach.call(list.querySelectorAll('.tsel'),function(b){
+    b.onclick=function(){select(b.dataset.id,true)};
+  });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-mv]'),function(b){
+    b.onclick=function(){moveTrip(b.dataset.id,+b.dataset.mv)};
+  });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-day]'),function(b){
+    b.onclick=function(){toggleDay(b.dataset.day)};
+  });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-x]'),function(b){
+    b.onclick=function(){toggleTrip(b.dataset.x);after()};
   });
 }
-document.getElementById('tripclear').onclick=function(){trip=[];saveTrip();renderTrip();needOver=true;if(sel&&byId[sel])renderDetail(byId[sel])};
+document.getElementById('tripclear').onclick=function(){trip=[];dayBreaks=[];saveTrip();renderTrip();needOver=true;if(sel&&byId[sel])renderDetail(byId[sel])};
 document.getElementById('tripclose').onclick=function(){document.getElementById('trip').classList.remove('open')};
 document.getElementById('sheetbtn').onclick=function(){
   var t=document.getElementById('trip'),open=t.classList.toggle('open');
@@ -1921,6 +2223,52 @@ function setRegionChip(id){
     b.onclick=function(){setRegionChip(rg.id);flyTo(fit(rg.box,regionPad(rg.id)),760);killHint()};
     wrap.appendChild(b);
   });
+})();
+
+/* ---- base map ----
+   Three grounds, and the choice is the reader's. Ink fetches nothing, ever, which
+   is the guide as it was. It is a preference about looking, not part of the guide,
+   so it lives in its own key and never rides in a shared link. */
+var LMODES=[
+  {id:'ink',    name:'Ink',     ja:'墨',  title:'The drawn map alone — nothing fetched'},
+  {id:'terrain',name:'Terrain', ja:'地形',title:'Hillshade under the ink — the shape of the ground'},
+  {id:'streets',name:'Streets', ja:'街',  title:'Streets and hillshade — for planning a walk'}
+];
+function saveLayerPref(){try{localStorage.setItem('japan-guide-base',layerMode+(jaLabels?'|ja':''))}catch(e){}}
+function loadLayerPref(){
+  try{
+    var v=localStorage.getItem('japan-guide-base');if(!v)return;
+    var a=String(v).split('|');
+    for(var i=0;i<LMODES.length;i++)if(LMODES[i].id===a[0])layerMode=a[0];
+    jaLabels=a[1]==='ja';
+  }catch(e){}
+}
+function syncLayers(){
+  Array.prototype.forEach.call(document.querySelectorAll('#layers .lchip'),function(b){
+    if(b.dataset.l)b.setAttribute('aria-pressed',b.dataset.l===layerMode?'true':'false');
+    else{b.setAttribute('aria-pressed',jaLabels?'true':'false');b.hidden=layerMode!=='streets'}
+  });
+  document.getElementById('rdsrc').hidden=layerMode==='ink';
+}
+(function buildLayers(){
+  var wrap=document.querySelector('#layers .lrow');
+  LMODES.forEach(function(m){
+    var b=document.createElement('button');
+    b.className='lchip';b.type='button';b.dataset.l=m.id;b.title=m.title;
+    b.setAttribute('aria-label',m.name+' base map');   /* the kanji carries it alone on narrow screens */
+    b.innerHTML='<span class="en">'+esc(m.name)+'</span><small class="ja">'+esc(m.ja)+'</small>';
+    b.onclick=function(){layerMode=m.id;saveLayerPref();syncLayers();invalidate()};
+    wrap.appendChild(b);
+  });
+  /* GSI has no label-free raster past z14, so turning names off also costs street
+     detail up close. Worth offering, worth saying so. */
+  var j=document.createElement('button');
+  j.className='lchip';j.type='button';
+  j.title='Japanese place names on the base map. Turning them off also drops to a coarser survey above z14.';
+  j.innerHTML='<span class="ja">名</span>';
+  j.setAttribute('aria-label','Japanese names on the base map');
+  j.onclick=function(){jaLabels=!jaLabels;saveLayerPref();syncLayers();invalidate()};
+  wrap.appendChild(j);
 })();
 
 /* ---- filters ---- */
@@ -2069,6 +2417,18 @@ function okTips(arr){
   }
   return out;
 }
+/* Day breaks are positions in someone else's trip list, and a shared link is
+   somebody else's input: bound them to that list or they index into nothing. */
+function okDays(v,len){
+  var out=[],seen={};if(!Array.isArray(v))return out;
+  for(var i=0;i<v.length&&out.length<200;i++){
+    var b=v[i];
+    if(typeof b!=='number'||!isFinite(b)||b!==Math.floor(b))continue;
+    if(b<1||b>=len||seen[b])continue;
+    seen[b]=1;out.push(b);
+  }
+  return out.sort(function(a,b){return a-b});
+}
 function okGuide(g){
   if(!g||typeof g!=='object')return GUIDE;
   return {sub:cstr(g.sub,70).trim()||GUIDE.sub,title:cstr(g.title,60).trim()||GUIDE.title,
@@ -2078,7 +2438,7 @@ function okGuide(g){
 
 /* ---- persistence ---- */
 function saveMine(){
-  try{localStorage.setItem(STORE,JSON.stringify({v:1,places:USER,tips:TIPS,guide:GUIDE,trip:trip}))}
+  try{localStorage.setItem(STORE,JSON.stringify({v:1,places:USER,tips:TIPS,guide:GUIDE,trip:trip,days:dayBreaks}))}
   catch(e){toast('Could not save — this browser’s storage is full or blocked.')}
 }
 function loadMine(){
@@ -2088,6 +2448,7 @@ function loadMine(){
     USER=okPlaces(d.places);TIPS=okTips(d.tips);GUIDE=okGuide(d.guide);
     rebuildPlaces();
     if(Array.isArray(d.trip))trip=d.trip.filter(function(x){return typeof x==='string'&&byId[x]});
+    dayBreaks=okDays(d.days,trip.length);
     return true;
   }catch(e){return false}
 }
@@ -2107,6 +2468,10 @@ function packed(){
     p:USER.map(function(q){return [q.name,q.ja,q.cat,q.note,+q.lat.toFixed(5),+q.lng.toFixed(5),q.id,q.region]}),
     r:trip};
   if(!tipsAreOriginal())o.t=TIPS.map(function(t){return [t.tag,t.title,t.body,t.id]});
+  /* Only sent when the trip has actually been split, so an undivided guide's link
+     stays as short as it ever was. An older page ignores the key; a newer page
+     opening an older link just reads one day. */
+  if(dayBreaks.length)o.d=dayBreaks;
   return o;
 }
 function unpacked(o){
@@ -2117,7 +2482,8 @@ function unpacked(o){
       return {name:a[0],ja:a[1],cat:a[2],note:a[3],lat:a[4],lng:a[5],id:a[6],region:a[7]}}),
     tips:Array.isArray(o.t)?o.t.map(function(a){
       return {tag:a[0],title:a[1],body:a[2],id:a[3]}}):freshTips(),
-    trip:Array.isArray(o.r)?o.r:[]
+    trip:Array.isArray(o.r)?o.r:[],
+    days:Array.isArray(o.d)?o.d:[]
   };
 }
 function b64enc(str){
@@ -2147,6 +2513,8 @@ function readFragment(){
     USER=okPlaces(d.places);TIPS=okTips(d.tips);GUIDE=okGuide(d.guide);
     rebuildPlaces();
     trip=d.trip.filter(function(x){return typeof x==='string'&&byId[x]});
+    /* bound to the trip that actually survived the filter above, not the one sent */
+    dayBreaks=okDays(d.days,trip.length);
     return true;
   }catch(e){return false}
 }
@@ -2522,6 +2890,7 @@ document.getElementById('sharebtn').onclick=shareSheet;
 /* ---- boot ---- */
 window.addEventListener('resize',function(){resize();syncChrome()});
 readTheme();resize();syncChrome();
+loadLayerPref();syncLayers();
 shared=readFragment();
 if(!shared&&!loadMine()){
   /* first visit on this browser: seed the notes, then honour any older saved trip */

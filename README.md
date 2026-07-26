@@ -6,11 +6,15 @@ A stylised point-cloud map of Japan for planning a trip — and for handing to f
 
 Sumi ink on washi paper. The country is drawn as a field of ink dots, denser where the cities are; the Shinkansen lines thread between them, Mount Fuji is a radial cone of points, and Lake Biwa is a hole in the cloud. Vermilion marks are personal recommendations, and the whole guide travels in a single link.
 
-**One file, no build step, no backend, nothing fetched at runtime.** Open `index.html` in a browser.
+**One file, no build step, no backend.** Open `index.html` in a browser.
+
+Zoom into a city and the ground becomes a real survey — streets and hillshade, so you can see which side of the station a place is on and how far it is on foot. That part is fetched; everything else is in the file. The opening view fetches nothing, the *Ink* setting fetches nothing ever, and with no network at all the drawn map is exactly what it always was.
 
 ## Credits
 
 The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `paper-texture` fragment shader (Apache-2.0), bundled and inlined — fibre, crumple and speckle rendered in WebGL2 and multiplied over the paper colour. It mounts static, so it draws once and costs nothing after. Where WebGL2 is unavailable it falls back to a generated noise tile, and the page reads correctly with neither.
+
+Streets and terrain are [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html) — 出典：国土地理院 — from the Geospatial Information Authority of Japan. Free, no key, no account. They are desaturated, multiplied into the paper and tinted toward sumi, so they print into the drawing rather than sitting on top of it.
 
 ---
 
@@ -22,7 +26,8 @@ The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `
 | **Read a place** | Click any mark for what it is, why it's worth going, and a practical note — opening hours, the hour that beats the crowds, whether it's cash-only. |
 | **Search** | Takes what you'd actually type: `asakusa`, `golden pavilion`, `deer`, `glico`, `black eggs`, `東大寺`. Whole-word matches rank first, so `uji` finds Byōdō-in rather than every Fuji. |
 | **Jump** | Region buttons fly between Tokyo, Fuji & Hakone, Kyoto, Nara, Osaka, and the whole country. |
-| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops — grouped by city with running distance. Saved in the browser. |
+| **Choose the ground** | *Ink* is the drawn map alone. *Terrain* puts hillshade under it — useful for Hakone and the hills behind Kyoto. *Streets* adds the survey, and is what makes the city zoom usable. 名 turns the Japanese names on the base on and off. |
+| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Reorder with ↑ ↓, split into days with 日, and each stop shows how long the walk from the one above it takes. Saved in the browser. |
 
 ## Adding your own places
 
@@ -54,7 +59,9 @@ Set the title, the opening note, the vertical characters and the seal character 
 
 ## Notes and caveats
 
-- **Coordinates** for the 73 built-in places were checked against Wikipedia and OpenStreetMap. **The geography is deliberately coarse** — the coastlines are hand-authored, so the silhouette is recognisable but not survey-accurate. Plan shapes with it, don't navigate by it.
+- **Coordinates** for the 73 built-in places were checked against Wikipedia and OpenStreetMap. **The drawn geography is deliberately coarse** — the coastlines are hand-authored, so the silhouette is recognisable but not survey-accurate. It carries the country; the GSI tiles carry the cities, and they fade in over each other from about z10.
+- **Walking times** are straight-line distance with a 1.3 detour factor at 4.5 km/h. That is a decent planning estimate on flat ground, not a route — it does not know about the hill, the river or the level crossing. Legs over 12 km say *take the train* rather than pretending.
+- **Turning the base labels off** drops to GSI's `blank` layer, which stops at z14, so it loses street detail as well as names above that. `pale` (labels on) runs to z18 and is the default.
 - **Typography** relies on Hiragino Mincho / Yu Mincho, which are present on macOS, iOS and Windows Japanese installs. Elsewhere it falls back to Georgia, which changes the character of the page.
 - **Single theme by design.** This is a printed map, not a UI — there's no dark mode.
 - Points are generated per frame rather than stored: a jittered lattice masked against the coastline, weighted by how built-up the ground is, sized to hold a constant on-screen density at every zoom. Deterministic from world position, so it holds still while you pan.
