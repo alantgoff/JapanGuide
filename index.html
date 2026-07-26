@@ -30,9 +30,6 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body
 #stage.placing{cursor:crosshair}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #paper{position:absolute;inset:0;z-index:0;pointer-events:none;mix-blend-mode:multiply;opacity:.5}
-/* Survey tiles are printed into the paper, not laid on top of it: multiply drops the
-   tile's white ground to nothing and leaves only roads, contours and hillshade. */
-#tiles{mix-blend-mode:multiply}
 #paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #grain{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:.55;mix-blend-mode:multiply}
 #grain.off{display:none}
@@ -114,28 +111,6 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #scalebar{display:flex;align-items:center;gap:8px}
 #scalebar .bar{height:4px;border-left:1px solid var(--line-strong);border-right:1px solid var(--line-strong);
   border-bottom:1px solid var(--line-strong);width:56px;transition:width .12s;display:block}
-
-/* ---- base map ---- */
-#layers{bottom:142px;right:20px;display:flex;flex-direction:column;overflow:hidden}
-#layers .lrow{display:flex}
-#layers .lchip{padding:9px 11px;font-size:10.5px;color:var(--ink-faint);white-space:nowrap;
-  border-right:1px solid var(--line);transition:color .2s,background .2s;display:flex;align-items:center;gap:5px}
-#layers .lchip:last-child{border-right:0}
-#layers .lchip:hover{color:var(--ink);background:rgba(34,31,27,.04)}
-#layers .lchip[aria-pressed="true"]{color:var(--ink);background:rgba(34,31,27,.07)}
-#layers .lchip small{font-size:10px;opacity:.7}
-/* names asked off, but no label-free survey exists this close */
-#layers .lchip.forced small{border-bottom:1px dotted currentColor;opacity:1}
-/* The survey is somebody else's work and says so, but quietly — it is a credit
-   line on a drawing, not a badge. */
-#layers .lsrc{border-top:1px solid var(--line);padding:6px 11px;color:var(--ink-faint);
-  text-decoration:none;font-size:9.5px;letter-spacing:.04em}
-#layers .lsrc:hover{color:var(--ink-dim)}
-#layers .lsrc[hidden]{display:none}
-/* Falling back to the drawn map looks exactly like the streets never having
-   worked. Say which it is. */
-#layers .lwarn{color:var(--shu);opacity:.85}
-
 /* ---- zoom ---- */
 #nav{bottom:20px;right:20px;display:flex;flex-direction:column;overflow:hidden}
 #nav button{width:38px;height:38px;font-size:14px;color:var(--ink-dim);border-bottom:1px solid var(--line);
@@ -331,13 +306,6 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   #legend .fchip{border-right:1px solid var(--line)}
   #readout{display:none}
   #nav{bottom:auto;top:auto;bottom:130px;right:12px}
-  /* Narrow screens have no room for a wide control sitting over the map, and the
-     kanji reads on its own — the English survives as the accessible name. */
-  #layers{bottom:252px;right:12px}
-  #layers .lchip{padding:10px 12px}
-  #layers .lchip .en{display:none}
-  #layers .lchip small{font-size:12px;opacity:1}
-  #layers .lsrc{font-size:9px;padding:5px 12px}
   #trip{left:12px;right:12px;bottom:12px;top:auto;width:auto;max-height:52vh;display:none;z-index:7}
   #trip.open{display:flex}
   #detail,#pform{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:66vh;z-index:8}
@@ -359,7 +327,6 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 <body>
 <div id="stage">
   <div id="paper" aria-hidden="true"></div>
-  <canvas id="tiles" aria-hidden="true"></canvas>
   <canvas id="base"></canvas>
   <canvas id="over" role="img" aria-label="A point-cloud map of Japan, with streets and terrain once you zoom into a city. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
 </div>
@@ -397,13 +364,6 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   <span class="mono" id="rdll">—</span>
   <span class="mono" id="rdz">—</span>
   <span id="scalebar" class="mono"><span class="bar" id="sbbar"></span><span id="sblbl">—</span></span>
-</div>
-
-<div class="panel" id="layers">
-  <div class="lrow" role="group" aria-label="Base map"></div>
-  <a class="lsrc mono" id="rdsrc" href="https://maps.gsi.go.jp/development/ichiran.html"
-     target="_blank" rel="noopener">出典：国土地理院</a>
-  <span class="lsrc lwarn mono" id="rdwarn" hidden>Survey unreachable — showing the drawn map</span>
 </div>
 
 <div class="panel" id="nav">
@@ -1256,7 +1216,6 @@ void main() {
 (function(){
 'use strict';
 var stage=document.getElementById('stage'),
-    tlc=document.getElementById('tiles'),tlx=tlc.getContext('2d'),
     bc=document.getElementById('base'),bx=bc.getContext('2d'),
     oc=document.getElementById('over'),ox=oc.getContext('2d');
 var W=0,H=0,dpr=1;
@@ -1341,18 +1300,11 @@ function readTheme(){
 var ALPHA=[.38,.92,.72,.66,.97,.92];
 var SIZE=[.8,1.1,1.0,1.05,1.45,1.15];
 
-/* The drawn layers are vector work and text, so they earn their retina backing
-   store. The tile sheet does not: GSI serves no @2x raster and pickZ deliberately
-   asks for a zoom in CSS pixels, so at dpr 2 every tile was already being upscaled
-   two-fold — rasterising that upscale into four times the pixels buys no detail
-   that exists, and tiles are the largest fill in the frame. Draw it at 1 and let
-   the compositor do the same scale once, on its own thread. */
 function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
   W=stage.clientWidth;H=stage.clientHeight;
   [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
-  tlc.width=Math.round(W);tlc.height=Math.round(H);
-  tlx.setTransform(1,0,0,1,0,0);bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
+  bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
   dirty=true;
 }
 
@@ -1368,261 +1320,25 @@ function fit(box,pad){
   return {cx:(w+e)/2,cy:(s+n)/2,s:Math.max(MINS,Math.min(MAXS,sc))};
 }
 
-/* ---- survey tiles: streets and terrain ----
-   The ink cloud carries the country. It cannot carry a city — past about z10 it is
-   decorative noise, and you cannot plan a walk on it. So from there the ground
-   becomes real survey data from 地理院タイル (the Geospatial Information Authority
-   of Japan): free, keyless, and the only source that knows this coastline properly.
-
-   Nothing is fetched until you zoom past TILE_IN, so the opening view still costs
-   no network at all, and if the tiles never arrive the ink map is left untouched. */
-/* filt is baked into each tile once on arrival — see bake(). It belongs to the
-   source rather than the draw call because a cached tile is only ever one layer. */
-var TSRC={
-  pale :{url:'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',        min:2,max:18},
-  blank:{url:'https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png',       min:5,max:14},
-  hill :{url:'https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png',min:2,max:16}
-};
-/* The two curves are one crossfade and have to be read together. Tiles rise from
-   900 to 3000; the ink has to be substantially gone by the time they are fully up,
-   or the last of the cloud reads as grit scattered over live streets rather than
-   as a drawing handing over. It lags the rise, then finishes just after it. */
-var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1200,INK_OUT_1=3600,GEO_OUT_0=1500,GEO_OUT_1=4200;
-var layerMode='streets',jaLabels=true,blankForced=false;
-/* The budget is per layer, not shared. Terrain is drawn first and would otherwise
-   spend the whole allowance before the street pass asks for anything, so streets —
-   the layer you actually zoomed in for — would arrive a full round late on every
-   new view. */
-var TC=new Map(),TILE_CAP=384,TILE_INFLIGHT=8,TILE_RETRIES=1,TILE_RETRY_MS=5000;
-var inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0,tilesWanted=0;
-
-/* The ink treatment, in one place, because it is the whole of how this looks and
-   it is the thing you will want to nudge after seeing it on real tiles.
-
-   Streets: GSI's road greys sit *above* mid-grey, so raising contrast alone drives
-   them toward white along with the paper. Duck the image below the pivot first,
-   then a hard contrast separates ground (clips to white and multiplies away) from
-   tarmac and lettering (fall to ink). The two numbers are fitted to GSI's actual
-   pale palette, which is far lighter than intuition suggests — its water is luma
-   220 against a 242 ground — and an eighth of a stop either way is the difference
-   between a legible river and no river at all. Solved for ground -> 255 and
-   water -> ~200; measured end-to-end, the ladder runs buildings 5%, parks 10%,
-   arterials 14%, water 14%, lane casings 25%, rail 50%, lettering 62%.
-
-   Terrain: lift the lit slopes clear to white so they multiply away entirely and
-   only the shadowed side prints. A hillshade that darkens everywhere is a grey
-   veil over the paper, not a drawing of the ground.
-
-   No tint pass: grayscale has already taken the survey blues and greens out, and
-   multiplying neutral grey through warm paper warms it toward sumi on its own. */
-var INK={
-  hillA:.45,  hillF:'grayscale(1) contrast(.9) brightness(1.25)',
-  streetA:.62,streetF:'grayscale(1) brightness(.67) contrast(3.7)',
-  flatHillA:.30,flatStreetA:.34   /* no canvas filters: lighter, and a wash instead */
-};
-
-/* Canvas filters do the desaturating. Safari was late to them; without them the
-   pass still reads, just flatter, so detect once and carry on either way. */
-var FILT=(function(){try{tlx.filter='grayscale(1)';var ok=tlx.filter==='grayscale(1)';tlx.filter='none';return ok}catch(e){return false}})();
-TSRC.pale.filt=TSRC.blank.filt=INK.streetF;TSRC.hill.filt=INK.hillF;
-
 function smoothstep(a,b,x){var t=(x-a)/(b-a);if(t<0)t=0;else if(t>1)t=1;return t*t*(3-2*t)}
-function tileFade(){return layerMode==='ink'?0:smoothstep(TILE_IN,TILE_FULL,V.s)}
-/* The ink only stands down for something that replaces it, which means streets.
-   Terrain lays hillshade *under* the drawing and the cloud stays — that is the
-   whole of what that setting offers. And offline this is 0, so a failed fetch
-   leaves the map exactly as it always was rather than as blank paper. */
-function inkFade(){return streetDrew?smoothstep(INK_OUT_0,INK_OUT_1,V.s):0}
-/* The drawn features are geometric claims, and at street scale the survey beneath
-   contradicts every one of them: the coastline is hand-authored at a median 35km
-   between vertices, the ridges are twelve freehand spines, and Fuji is a synthetic
-   cone rather than the mountain. At country scale that is the charm of the thing.
-   At 221 pixels to the kilometre it is just a second, wrong coastline argued over
-   the real one — so the drawing stands aside for the survey instead. It trails the
-   generated fill slightly, so the handover grades rather than cuts. Terrain mode
-   keeps everything: hillshade makes no claim about where the shore is. */
-function geoFade(){return streetDrew?smoothstep(GEO_OUT_0,GEO_OUT_1,V.s):0}
 
-function getTile(src,z,x,y,want){
-  var k=src+'/'+z+'/'+x+'/'+y,e=TC.get(k);
-  if(e){TC.delete(k);TC.set(k,e);return e}          /* touch: Map keeps insertion order */
-  if(!want||(inflight[src]|0)>=TILE_INFLIGHT)return null;
-  if(TC.size>=TILE_CAP){
-    /* evict the oldest settled entry — dropping one mid-flight only wastes the fetch */
-    var it=TC.entries(),c;
-    while(!(c=it.next()).done)if(c.value[1].st!=='load'){TC.delete(c.value[0]);break}
-  }
-  e={img:null,st:'load',n:0};TC.set(k,e);
-  fetchTile(src,z,x,y,k,e);
-  return e;
-}
-/* Silence is the one failure mode a reader cannot diagnose: a blocked or missing
-   survey renders as the old drawn map, which is indistinguishable from the streets
-   never having been built. Count outright failures and say so once they are the
-   whole story. */
-var tileFails=0,warnState=false;
-function noteTiles(){
-  var want=layerMode!=='ink'&&tileFade()>.5;
-  var lost=want&&tileFails>=4&&tilesDrew===0;
-  if(lost!==warnState){
-    warnState=lost;
-    var w=document.getElementById('rdwarn');if(w)w.hidden=!lost;
-    var s=document.getElementById('rdsrc');if(s)s.hidden=layerMode==='ink'||lost;
-  }
-}
+/* One continuous drawing now, not a handover to something else. Two things step
+   back as you come in, and neither goes to nothing:
 
-/* Kept apart from getTile so a retry can reuse the same cache entry, which is what
-   carries the attempt count. One retry, on a delay: a blink of bad network would
-   otherwise leave a permanent hole in the sheet until you happened to pan away and
-   back, and unlimited retries against a host that is genuinely gone is the other
-   way to get this wrong. */
-/* The desaturation is a property of the tile, not of the frame — the same pixels
-   resolve to the same ink every time. Running it inside the draw loop meant a 1440p
-   retina window pushed roughly 28 million filtered pixels per frame, twice over for
-   terrain and streets, and canvas filters take the slow path: an offscreen surface
-   allocated and a filter chain run per drawImage. Bake it once on arrival instead
-   and the frame is left with plain blits. Costs one 256px canvas per cached tile,
-   which is why TILE_CAP is sized in tiles rather than left to grow. */
-function bake(e,src){
-  if(!FILT)return;
-  var img=e.img,w=img.naturalWidth||256,h=img.naturalHeight||256;
-  try{
-    var c=document.createElement('canvas');c.width=w;c.height=h;
-    var g=c.getContext('2d');if(!g)return;
-    g.filter=TSRC[src].filt;g.drawImage(img,0,0);
-    e.bm=c;e.img=null;                 /* the decoded original is dead weight now */
-  }catch(err){/* leave e.bm as the raw image; it just draws unfiltered */}
-}
+   The graticule is scaffolding for an empty field — once the streets are drawn it
+   is a competing set of lines, so it retires as they arrive.
 
-function fetchTile(src,z,x,y,k,e){
-  e.st='load';inflight[src]=(inflight[src]|0)+1;
-  var img=new Image();e.img=img;
-  /* No crossOrigin: we never read these pixels back, and asking for CORS would
-     only add a way for the request to fail. */
-  img.onload=function(){
-    e.w=img.naturalWidth||256;e.h=img.naturalHeight||256;
-    e.bm=img;bake(e,src);
-    e.st='ok';inflight[src]--;tilesArrived=true;
-  };
-  img.onerror=function(){
-    e.st='err';inflight[src]--;tileFails++;tilesArrived=true;
-    if(e.n>=TILE_RETRIES)return;
-    e.n++;
-    setTimeout(function(){
-      if(TC.get(k)!==e||e.st!=='err')return;   /* evicted or already recovered */
-      fetchTile(src,z,x,y,k,e);invalidate();
-    },TILE_RETRY_MS);
-  };
-  img.src=TSRC[src].url.replace('{z}',z).replace('{x}',x).replace('{y}',y);
-}
+   The generated ground lattice is the paper texture of the country. It cannot say
+   anything about a city block, so it thins as the authored streets and sites take
+   over the reading — but only to a floor. Blank paper under a street plan reads as
+   a bug; a quiet stipple under it reads as ground. Note this acts on the *count*,
+   not the alpha: fewer dots per screen, each one still full-weight ink. Fading the
+   alpha instead greys the whole sheet toward the paper and loses the ink. */
+var GRID_OUT_0=1200,GRID_OUT_1=3600;
+var FILL_OUT_0=2000,FILL_OUT_1=9000,FILL_FLOOR=.25;
+function gridFade(){return 1-smoothstep(GRID_OUT_0,GRID_OUT_1,V.s)}
+function fillFade(){return 1-(1-FILL_FLOOR)*smoothstep(FILL_OUT_0,FILL_OUT_1,V.s)}
 
-/* The zoom to ask for. Deliberately *not* scaled by devicePixelRatio: GSI serves
-   no @2x variant, so a retina bump means four times the tiles for sharpness this
-   design throws away anyway — the base is desaturated, crushed to near-white,
-   drawn at 62% through a paper shader and a grain overlay. Leaflet makes the same
-   call with 256px tiles. TILE_BUDGET is only a backstop against pathological
-   windows: it steps the zoom down rather than giving up, because a 4K screen
-   showing no tiles at all and no reason why is the worst of the outcomes. */
-var TILE_BUDGET=256;
-function tileSpan(z){
-  var dpt=360/Math.pow(2,z);
-  return (Math.floor(xOfS(W)/dpt)-Math.floor(xOfS(0)/dpt)+1)*
-         (Math.floor(-yOfS(H)/dpt)-Math.floor(-yOfS(0)/dpt)+1);
-}
-function pickZ(){
-  var z=Math.round(Math.log(V.s*360/256)/Math.LN2);
-  while(z>1&&tileSpan(z)>TILE_BUDGET)z--;
-  return z;
-}
-
-/* Which tiles cover the window, and exactly where each one lands. Kept apart from
-   the painting so the geometry can be reasoned about — and checked — on its own. */
-function visibleTiles(src,z){
-  var S=TSRC[src];if(!S)return null;
-  var tz=Math.max(S.min,Math.min(S.max,z)),n=Math.pow(2,tz),dpt=360/n;
-  var X0=Math.floor((xOfS(0)+180)/dpt),X1=Math.floor((xOfS(W)+180)/dpt);
-  var Y0=Math.floor((180-yOfS(0))/dpt),Y1=Math.floor((180-yOfS(H))/dpt);
-  if(X0<0)X0=0;if(Y0<0)Y0=0;if(X1>n-1)X1=n-1;if(Y1>n-1)Y1=n-1;
-  /* A clamp back up to a source's ceiling can re-inflate the count past what pickZ
-     allowed, so hold the same line here rather than trusting the caller. */
-  if((X1-X0+1)*(Y1-Y0+1)>TILE_BUDGET*2)return null;
-  var list=[];
-  for(var X=X0;X<=X1;X++)for(var Y=Y0;Y<=Y1;Y++){
-    /* Round each edge independently. Rounding an origin and a size instead lets
-       the error accumulate, and hairlines of bare paper show between tiles. */
-    list.push({X:X,Y:Y,
-      px0:Math.round(sxOf(X*dpt-180)),px1:Math.round(sxOf((X+1)*dpt-180)),
-      py0:Math.round(syOf(180-Y*dpt)),py1:Math.round(syOf(180-(Y+1)*dpt))});
-  }
-  return {tz:tz,list:list};
-}
-
-/* No filter is set here: every tile arrived already desaturated. This loop is now
-   only blits, which is what lets it run per-frame during a drag. */
-function drawLayer(src,z,alpha){
-  var v=visibleTiles(src,z);if(!v)return 0;
-  var S=TSRC[src],tz=v.tz,list=v.list;
-  /* Requesting mid-flight, or mid-wheel, would queue every zoom level the camera
-     passes through. */
-  var want=!anim&&performance.now()>=zoomQuietUntil,drew=0;
-  tlx.globalAlpha=alpha;
-  for(var i=0;i<list.length;i++){
-    var t=list[i],X=t.X,Y=t.Y,w=t.px1-t.px0,hgt=t.py1-t.py0;
-    var e=getTile(src,tz,X,Y,want);
-    if(e&&e.st==='ok'){tlx.drawImage(e.bm,t.px0,t.py0,w,hgt);drew++;continue}
-    /* Cover the gap with an ancestor so panning stays continuous, coarse then sharp. */
-    for(var up=1;up<=4;up++){
-      var az=tz-up;if(az<S.min)break;
-      var ax=X>>up,ay=Y>>up,ae=TC.get(src+'/'+az+'/'+ax+'/'+ay);
-      if(!ae||ae.st!=='ok')continue;
-      var f=1<<up,sw=ae.w/f,sh=ae.h/f;
-      tlx.drawImage(ae.bm,(X-(ax<<up))*sw,(Y-(ay<<up))*sh,sw,sh,t.px0,t.py0,w,hgt);
-      drew++;break;
-    }
-  }
-  tlx.globalAlpha=1;
-  tilesWanted+=list.length;
-  return drew;
-}
-
-function drawTiles(){
-  tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;tilesWanted=0;
-  var f=tileFade();if(f<=.002){noteTiles();return}
-  var z=pickZ(),d=0;
-  d+=drawLayer('hill',z,(FILT?INK.hillA:INK.flatHillA)*f);
-  if(layerMode==='streets'){
-    /* GSI publishes no label-free raster above z14. Stretching it to street level
-       would be a twenty-fold upscale — not "coarser", just mush — so one level of
-       give, then the labelled sheet comes back. The control says when it has. */
-    var ssrc=jaLabels||z>TSRC.blank.max+1?'pale':'blank',bf=ssrc==='pale'&&!jaLabels;
-    if(bf!==blankForced){blankForced=bf;syncLayers()}
-    streetDrew=drawLayer(ssrc,z,(FILT?INK.streetA:INK.flatStreetA)*f);
-    d+=streetDrew;
-  }
-  tilesDrew=d;noteTiles();
-  /* A large screen can want more tiles for one view than a fixed cache would hold,
-     which turns every pan into a re-fetch of ground already seen — so the cap is
-     sized to the working set, never below it, with 1.6x of room to pan before
-     anything still on screen is evicted.
-
-     Sized off tiles *wanted*, not tiles drawn. Drawn is a measure of what survived
-     the cache, so a cap set from it feeds back on itself: evict too hard, fewer
-     tiles draw, the cap drops again, and a 4K window settles at a permanent 60%
-     of the sheet. Wanted is a property of the window and the zoom alone.
-
-     The ceiling matters more than it used to: a baked tile is a 256px canvas,
-     ~256KB the browser cannot discard and re-decode the way it can an Image, so
-     768 is ~190MB and that is the deliberate limit. */
-  TILE_CAP=Math.max(192,Math.min(768,Math.round(tilesWanted*1.6)));
-  if(!d)return;
-  /* Without canvas filters the tiles keep their survey colours, and a wash of ink
-     over them is the cheap repair. With filters this would only grey the page. */
-  if(!FILT){
-    tlx.globalCompositeOperation='source-atop';
-    tlx.fillStyle='rgba(34,31,27,'+(.3*f).toFixed(3)+')';tlx.fillRect(0,0,W,H);
-    tlx.globalCompositeOperation='source-over';
-  }
-}
 
 /* ---- base layer: graticule + point cloud ---- */
 var buf=[],dirty=true,CAP=NPTS+30000,TARGET=11000,yieldEst=.4;
@@ -1641,9 +1357,9 @@ function vnoise(x,y,f){
 
 function drawGraticule(){
   var s=V.s, step=s<70?2:s<260?1:s<1100?.25:s<5000?.05:s<20000?.01:.002;
-  /* The grid is scaffolding for an empty field. Once streets are under it, it is
+  /* The grid is scaffolding for an empty field. Once the streets are drawn it is
      just another set of lines competing with them. */
-  var ga=1-tileFade();if(ga<=.02)return;
+  var ga=gridFade();if(ga<=.02)return;
   bx.save();bx.globalAlpha=ga;
   bx.lineWidth=1;bx.strokeStyle=COL.line;bx.beginPath();
   var lng0=Math.floor(xOfS(0)/step)*step, lng1=xOfS(W)+step;
@@ -1654,19 +1370,8 @@ function drawGraticule(){
   bx.stroke();bx.restore();
 }
 
-/* Past the handover this sheet is empty: the cloud has faded out, the drawn
-   geography has stood aside for the survey, and the graticule is gone with them.
-   Clearing a retina-sized canvas and re-scanning the point grid to draw nothing is
-   the largest thing left in a street-zoom frame, so notice the blank case and stop.
-   Cleared once on the way in, then left alone until something is owed to it. */
-var baseBlank=false;
 function renderBase(){
-  var s=V.s,ink=inkFade(),geo=geoFade();
-  if(ink>=1&&geo>=1&&1-tileFade()<=.02){
-    if(!baseBlank){bx.clearRect(0,0,W,H);baseBlank=true}
-    return;
-  }
-  baseBlank=false;
+  var s=V.s;
   bx.clearRect(0,0,W,H);
   drawGraticule();
   var m=0.04*(1/V.s)*100+0.3;
@@ -1703,7 +1408,7 @@ function renderBase(){
     /* How many candidates to try depends on how much of the window is land, how much
        gets thinned, and where you are — unknowable up front. So feed back the last
        frame's hit rate; it settles within a frame or two and tracks a drag live. */
-    var want=Math.min(46000,(TARGET-vn)/Math.max(.05,yieldEst))*(1-ink),added=0;
+    var want=Math.min(46000,(TARGET-vn)/Math.max(.05,yieldEst))*fillFade(),added=0;
     if(want>500){
       /* Only the city glows that actually overlap this window matter — usually one or two. */
       var latLo=myInv(y0),latHi=myInv(y1),nearU=[];
@@ -1746,15 +1451,12 @@ function renderBase(){
     }
   }
   var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2;
-  /* Ground, city and city-core are the generated body of the cloud and go first;
-     coast, ridge and Fuji are drawn geography and follow just behind. Both end up
-     gone, because what carries this from here is the paper, the ink the survey is
-     printed in, the typography and the vermilion — not a coastline that is wrong
-     by kilometres. */
-  var FILL=[1,0,0,1,1,0];
+  /* Ground, city and city-core are the generated body of the cloud and go first,
+     so the drawn geography — coast, ridge, Fuji, and the streets and sites — prints
+     over the top of it rather than under. */
   for(var k=0;k<6;k++){
     var cnt=bufN[k];if(!cnt)continue;
-    var a=ALPHA[k]*(1-(FILL[k]?ink:geo));
+    var a=ALPHA[k];
     if(a<=.01)continue;
     bx.globalAlpha=a;bx.fillStyle=COL.pts[k];
     var sz=Math.max(1,Math.round(SIZE[k]*zf)),arr=buf[k];
@@ -1986,8 +1688,7 @@ function renderOver(){
 var needOver=true,overTick=0;
 function loop(){
   if(anim)stepAnim();
-  if(tilesArrived){tilesArrived=false;dirty=true}
-  if(dirty){drawTiles();renderBase();dirty=false;needOver=true;updateReadout()}
+  if(dirty){renderBase();dirty=false;needOver=true;updateReadout()}
   /* A marching dash and a pulsing marker were holding the whole overlay at 60fps
      for as long as anything was selected — and renderOver re-places every label,
      measuring text as it goes. Both animations read identically at 30. phase steps
@@ -2013,12 +1714,6 @@ function stepAnim(){
   V.s=Math.exp(anim.f.ls+(anim.t.ls-anim.f.ls)*e);
   invalidate();
 }
-/* A wheel spun from the whole country down to a single street crosses ten zoom
-   levels. Asking at every one of them would fire hundreds of tiles nobody will
-   ever see, and put the ones you actually want at the back of the queue. While
-   the zoom is still moving we draw from whatever is cached and request nothing;
-   one quiet beat after it settles, we fetch. Pinch runs through here too. */
-var zoomQuietUntil=0,zoomSettle=null;
 function zoomAt(px,py,f){
   var ns=Math.max(MINS,Math.min(MAXS,V.s*f));
   if(ns===V.s)return;
@@ -2026,9 +1721,6 @@ function zoomAt(px,py,f){
   V.s=ns;
   V.cx=wx-(px-W/2)/V.s;
   V.cy=wy+(py-H/2)/V.s;
-  zoomQuietUntil=performance.now()+160;
-  if(zoomSettle)clearTimeout(zoomSettle);
-  zoomSettle=setTimeout(function(){zoomSettle=null;invalidate()},180);
   invalidate();
 }
 
@@ -2443,59 +2135,6 @@ function setRegionChip(id){
     b.onclick=function(){setRegionChip(rg.id);flyTo(fit(rg.box,regionPad(rg.id)),760);killHint()};
     wrap.appendChild(b);
   });
-})();
-
-/* ---- base map ----
-   Three grounds, and the choice is the reader's. Ink fetches nothing, ever, which
-   is the guide as it was. It is a preference about looking, not part of the guide,
-   so it lives in its own key and never rides in a shared link. */
-var LMODES=[
-  {id:'ink',    name:'Ink',     ja:'墨',  title:'The drawn map alone — nothing fetched'},
-  {id:'terrain',name:'Terrain', ja:'地形',title:'Hillshade under the ink — the shape of the ground'},
-  {id:'streets',name:'Streets', ja:'街',  title:'Streets and hillshade — for planning a walk'}
-];
-function saveLayerPref(){try{localStorage.setItem('japan-guide-base',layerMode+(jaLabels?'|ja':''))}catch(e){}}
-function loadLayerPref(){
-  try{
-    var v=localStorage.getItem('japan-guide-base');if(!v)return;
-    var a=String(v).split('|');
-    for(var i=0;i<LMODES.length;i++)if(LMODES[i].id===a[0])layerMode=a[0];
-    jaLabels=a[1]==='ja';
-  }catch(e){}
-}
-function syncLayers(){
-  Array.prototype.forEach.call(document.querySelectorAll('#layers .lchip'),function(b){
-    if(b.dataset.l){b.setAttribute('aria-pressed',b.dataset.l===layerMode?'true':'false');return}
-    b.setAttribute('aria-pressed',jaLabels?'true':'false');
-    b.hidden=layerMode!=='streets';
-    /* Names reappearing when you asked for them off needs saying, or it just looks
-       like the setting stopped working. */
-    b.classList.toggle('forced',blankForced);
-    b.title=blankForced
-      ? 'Names are off, but GSI publishes no label-free survey this close — the labelled sheet is standing in. Zoom out and they go again.'
-      : 'Japanese place names on the base map. Off uses GSI’s label-free survey, which stops at z14.';
-  });
-  document.getElementById('rdsrc').hidden=layerMode==='ink'||warnState;
-}
-(function buildLayers(){
-  var wrap=document.querySelector('#layers .lrow');
-  LMODES.forEach(function(m){
-    var b=document.createElement('button');
-    b.className='lchip';b.type='button';b.dataset.l=m.id;b.title=m.title;
-    b.setAttribute('aria-label',m.name+' base map');   /* the kanji carries it alone on narrow screens */
-    b.innerHTML='<span class="en">'+esc(m.name)+'</span><small class="ja">'+esc(m.ja)+'</small>';
-    b.onclick=function(){layerMode=m.id;saveLayerPref();syncLayers();invalidate()};
-    wrap.appendChild(b);
-  });
-  /* GSI has no label-free raster past z14, so turning names off also costs street
-     detail up close. Worth offering, worth saying so. */
-  var j=document.createElement('button');
-  j.className='lchip';j.type='button';
-  j.title='Japanese place names on the base map. Turning them off also drops to a coarser survey above z14.';
-  j.innerHTML='<span class="ja">名</span>';
-  j.setAttribute('aria-label','Japanese names on the base map');
-  j.onclick=function(){jaLabels=!jaLabels;saveLayerPref();syncLayers();invalidate()};
-  wrap.appendChild(j);
 })();
 
 /* ---- filters ---- */
@@ -3119,7 +2758,6 @@ document.getElementById('sharebtn').onclick=shareSheet;
 /* ---- boot ---- */
 window.addEventListener('resize',function(){resize();syncChrome()});
 readTheme();resize();syncChrome();
-loadLayerPref();syncLayers();
 shared=readFragment();
 if(!shared&&!loadMine()){
   /* first visit on this browser: seed the notes, then honour any older saved trip */
