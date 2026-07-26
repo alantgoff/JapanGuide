@@ -15,6 +15,9 @@
   --shu:#B5372A; --shu-dim:rgba(181,55,42,.5); --shu-wash:rgba(181,55,42,.085);
   --c-land:#7E786D; --c-coast:#221F1B; --c-ridge:#2F2C27;
   --c-urban:#565046; --c-urban-core:#1B1915; --c-fuji:#211E1A;
+  /* Streets are drawn lighter than the places they connect: a lane is context,
+     a site is the thing you came for. */
+  --c-street:#4A453C; --c-site:#191713;
   --shadow:0 6px 26px rgba(90,74,44,.16);
   --f-disp:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC","Iowan Old Style",Georgia,serif;
   --f-ja:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Noto Serif JP",serif;
@@ -596,8 +599,13 @@ var CITYBOX=[[139.28,35.33,140.02,35.87,5000],[138.50,35.08,139.14,35.62,4000],
 [135.60,34.91,135.89,35.10,1600],[135.68,34.57,135.91,34.75,1300],[135.37,34.56,135.61,34.76,1500]];
 
 /* ===== the cloud =====
-   buckets: 0 land, 1 coast, 2 ridge, 3 urban, 4 urban core, 5 fuji
-   each point: x, y (mercator), bucket, minScale (px/deg at which it appears) */
+   buckets: 0 land, 1 coast, 2 ridge, 3 urban, 4 urban core, 5 fuji, 6 street, 7 site
+   each point: x, y (mercator), bucket, minScale (px/deg at which it appears)
+
+   minScale is the whole level-of-detail scheme and it only ever adds: a point with
+   z=8000 is absent until you are that far in, and never leaves again. So the cloud
+   densifies as you approach rather than swapping one representation for another,
+   which is what lets a country of dots turn into an alley of dots without a seam. */
 var PX=[],PY=[],PB=[],PZ=[],NPTS=0;
 function push(lng,lat,b,z){if(inLake(lng,lat)&&b!==1)return;PX.push(mx(lng));PY.push(my(lat));PB.push(b);PZ.push(z);NPTS++}
 
@@ -1275,12 +1283,15 @@ function rebuildPlaces(){
 
 /* ---- view state ---- */
 var V={cx:mx(137.6),cy:my(38.2),s:52};
-/* MAXS was 42000 — about z16, two metres a pixel, which tells you the district and
-   nothing else. 320000 is z18.8, under 30cm a pixel: which side of the street the
-   entrance is on. GSI's own imagery stops at z18, so the last stretch is
-   overzoomed and goes a little soft; that is the ordinary bargain every slippy
-   map makes, and the scale is worth it. */
-var MINS=26,MAXS=320000;
+/* The ceiling is set by the finest thing the drawing actually says, and that is
+   Pontocho: two frontages 4.5m apart. A gap needs four or five pixels before the eye
+   reads it as a gap rather than as one thick line, and px/m is s/91187 — so 4.5m
+   opens up at about s=110000 (z17.2, 0.83m a pixel) and nothing authored resolves
+   any further than that. Past it you are magnifying a fixed set of dots: the picture
+   stops gaining and starts showing lattice artefacts. 1440px at this scale is 1.2km
+   across — Pontocho, Gion, Yasaka and the Kamo in one view, which is the zoom this
+   guide is actually for. */
+var MINS=26,MAXS=110000;
 var sel=null,hover=null,activeRegion='route',filters={},trip=[],dayBreaks=[],anim=null;
 function regionPad(id){return id==='all'?.16:id==='route'?.07:.30}
 for(var c in CATS)filters[c]=true;
@@ -1289,7 +1300,8 @@ for(var c in CATS)filters[c]=true;
 var COL={};
 function readTheme(){
   var cs=getComputedStyle(document.documentElement),g=function(n){return cs.getPropertyValue(n).trim()};
-  COL.pts=[g('--c-land'),g('--c-coast'),g('--c-ridge'),g('--c-urban'),g('--c-urban-core'),g('--c-fuji')];
+  COL.pts=[g('--c-land'),g('--c-coast'),g('--c-ridge'),g('--c-urban'),g('--c-urban-core'),g('--c-fuji'),
+           g('--c-street'),g('--c-site')];
   COL.line=g('--line');COL.lineStrong=g('--line-strong');
   COL.shu=g('--shu');COL.ink=g('--ink');COL.inkDim=g('--ink-dim');COL.inkFaint=g('--ink-faint');
   COL.ground=g('--ground');
@@ -1297,8 +1309,15 @@ function readTheme(){
 /* Ink laid on paper: the coast is a loaded brush, open country a dry one.
    Cities have to out-weigh the countryside by a clear margin or they dissolve
    into the texture — hence the gap between land and urban-core. */
-var ALPHA=[.38,.92,.72,.66,.97,.92];
-var SIZE=[.8,1.1,1.0,1.05,1.45,1.15];
+var ALPHA=[.38,.92,.72,.66,.97,.92,.62,.98];
+var SIZE=[.8,1.1,1.0,1.05,1.45,1.15,.95,1.25];
+/* Dots grow with zoom so the cloud keeps its ink weight instead of dissolving into
+   isolated specks. That is right for ground texture and wrong for anything drawn:
+   Pontocho is a 4.5m gap between two frontages, and at the ground's full 3.2x ramp
+   a site dot is 5px — the dots close the gap and the alley stops being an alley.
+   So the ramp is capped per bucket, tightest on the things whose whole meaning is
+   the space between them. */
+var ZCAP=[9,2.4,2.4,9,9,2.4,1.7,1.9];
 
 function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
@@ -1322,28 +1341,33 @@ function fit(box,pad){
 
 function smoothstep(a,b,x){var t=(x-a)/(b-a);if(t<0)t=0;else if(t>1)t=1;return t*t*(3-2*t)}
 
-/* One continuous drawing now, not a handover to something else. Two things step
-   back as you come in, and neither goes to nothing:
+/* One continuous drawing now, not a handover to something else. The graticule is
+   scaffolding for an empty field — once the streets are drawn it is a competing set
+   of lines, so it retires as they arrive. It is the only thing here that reaches
+   zero, because a grid ruled over a street plan is worth nothing at all.
 
-   The graticule is scaffolding for an empty field — once the streets are drawn it
-   is a competing set of lines, so it retires as they arrive.
-
-   The generated ground lattice is the paper texture of the country. It cannot say
-   anything about a city block, so it thins as the authored streets and sites take
-   over the reading — but only to a floor. Blank paper under a street plan reads as
-   a bug; a quiet stipple under it reads as ground. Note this acts on the *count*,
-   not the alpha: fewer dots per screen, each one still full-weight ink. Fading the
-   alpha instead greys the whole sheet toward the paper and loses the ink. */
+   Everything else has a floor. See the fill budget in renderBase for the rest. */
 var GRID_OUT_0=1200,GRID_OUT_1=3600;
-var FILL_OUT_0=2000,FILL_OUT_1=9000,FILL_FLOOR=.25;
 function gridFade(){return 1-smoothstep(GRID_OUT_0,GRID_OUT_1,V.s)}
-function fillFade(){return 1-(1-FILL_FLOOR)*smoothstep(FILL_OUT_0,FILL_OUT_1,V.s)}
+/* Dim the generated ground a little as the drawing takes over, so it seats behind
+   without greying the sheet. The count and the urban flattening do the real work —
+   alpha alone would wash the ink out toward the paper. */
+function groundDim(){return 1-.28*smoothstep(3000,24000,V.s)}
 
 
 /* ---- base layer: graticule + point cloud ---- */
-var buf=[],dirty=true,CAP=NPTS+30000,TARGET=11000,yieldEst=.4;
-for(var b=0;b<6;b++)buf.push(new Float32Array(CAP*2));
-var bufN=new Int32Array(6),visIdx=new Int32Array(NPTS);
+var NB=8;   /* buckets: 0 land 1 coast 2 ridge 3 urban 4 urban-core 5 fuji 6 street 7 site */
+/* On-screen point budget. It drops a little on the way in: at street zoom you are
+   looking at a kilometre of real ground, and filling it to country-zoom density is
+   exactly what buries the street plan. GROUND_FLOOR is what the generated fill keeps
+   no matter how much drawing is already on the sheet. */
+var TARGET=11000,TARGET_NEAR=9000,GROUND_FLOOR=1400;
+/* buf is sized for the worst case pass 1 can produce, not for NPTS: the >=CAP guard
+   in the fill makes under-sizing safe, and eight buckets at NPTS+30000 would be
+   megabytes of Float32Array nobody ever fills. */
+var buf=[],dirty=true,CAP=Math.min(NPTS,26000)+26000,yieldEst=.4;
+for(var b=0;b<NB;b++)buf.push(new Float32Array(CAP*2));
+var bufN=new Int32Array(NB),visIdx=new Int32Array(NPTS);
 /* stable hash so generated points don't swim while panning */
 function h2(i,j){var x=(i*374761393+j*668265263)>>>0;x=Math.imul(x^x>>>13,1274126177)>>>0;return((x^x>>>16)>>>0)/4294967296}
 /* smooth value noise, for mottling the built-up field into something like blocks
@@ -1356,7 +1380,7 @@ function vnoise(x,y,f){
 }
 
 function drawGraticule(){
-  var s=V.s, step=s<70?2:s<260?1:s<1100?.25:s<5000?.05:s<20000?.01:.002;
+  var s=V.s, step=s<70?2:s<260?1:s<1100?.25:.05;   /* gridFade zeroes this by s=3600 */
   /* The grid is scaffolding for an empty field. Once the streets are drawn it is
      just another set of lines competing with them. */
   var ga=gridFade();if(ga<=.02)return;
@@ -1377,7 +1401,7 @@ function renderBase(){
   var m=0.04*(1/V.s)*100+0.3;
   var x0=xOfS(-40),x1=xOfS(W+40),y0=yOfS(H+40),y1=yOfS(-40);
   var ci0=Math.floor(x0/CELL),ci1=Math.floor(x1/CELL),cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
-  bufN[0]=bufN[1]=bufN[2]=bufN[3]=bufN[4]=bufN[5]=0;
+  bufN.fill(0);
   /* pass 1 — which points are on screen at this zoom */
   var vn=0;
   for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
@@ -1408,7 +1432,13 @@ function renderBase(){
     /* How many candidates to try depends on how much of the window is land, how much
        gets thinned, and where you are — unknowable up front. So feed back the last
        frame's hit rate; it settles within a frame or two and tracks a drag live. */
-    var want=Math.min(46000,(TARGET-vn)/Math.max(.05,yieldEst))*fillFade(),added=0;
+    /* `TARGET-vn` already self-balances: the fill only pays for the shortfall the
+       drawing did not cover, so multiplying by a fade on top of it double-counts and
+       empties the ground exactly where the authored detail is densest — which is the
+       one place you were trying to protect. Budget the whole sheet instead, with a
+       floor under the fill so it thins toward ground texture and never to bare paper. */
+    var tgt=TARGET+(TARGET_NEAR-TARGET)*smoothstep(3000,24000,s);
+    var want=Math.min(46000,Math.max(GROUND_FLOOR,tgt-vn)/Math.max(.05,yieldEst)),added=0;
     if(want>500){
       /* Only the city glows that actually overlap this window matter — usually one or two. */
       var latLo=myInv(y0),latHi=myInv(y1),nearU=[];
@@ -1421,7 +1451,13 @@ function renderBase(){
       for(var gx=Math.floor(x0/stepD)*stepD;gx<x1;gx+=stepD)
       for(var gy=Math.floor(y0/stepD)*stepD;gy<y1;gy+=stepD){
         tried++;
-        var qgx=(gx*7919)|0,qgy=(gy*7919)|0;
+        /* gx is an exact multiple of stepD anchored to the world origin, so the
+           lattice index is the honest key. Scaling by a prime and truncating needed
+           stepD*7919 >= 1 to separate adjacent columns, which fails above s~110000
+           (stepD 1.16e-4, product 0.92) — neighbouring columns collapse onto one hash
+           and the ground breaks into vertical bands. Invisible until now only because
+           the fill used to be faded out entirely by then. */
+        var qgx=Math.round(gx/stepD),qgy=Math.round(gy/stepD);
         var lx=gx+(h2(qgx,qgy)-.5)*jit, ly=gy+(h2(qgy+1,qgx+1)-.5)*jit;
         var la=myInv(ly);
         if(!landFast(lx,la))continue;
@@ -1440,6 +1476,12 @@ function renderBase(){
            close, so ease it off as the view tightens. */
         nz=(nz-.5)*(s>1600?.85:1.9)+.5;if(nz<0)nz=0;else if(nz>1)nz=1;
         wgt*=.25+1.35*nz;
+        /* Once the window is narrower than a neighbourhood, "this is a dense city"
+           has stopped being information — everything in frame is the city. Left
+           saturated, every fill dot becomes urban-core: near-full alpha at the
+           largest dot size, a wall of ink that no street line survives. Flatten it
+           over the span the drawing arrives on, and the fill hands its emphasis over. */
+        wgt*=1-smoothstep(4000,20000,s);
         var lb=wgt>.92?4:wgt>.48?3:0;
         if(lb===0&&h2(qgx+7,qgy+13)>.26+wgt*1.5)continue; /* thin out open country */
         if(bufN[lb]>=CAP)continue;
@@ -1450,16 +1492,17 @@ function renderBase(){
       if(tried>200)yieldEst=yieldEst*.45+(added/tried)*.55;
     }
   }
-  var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2;
+  var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2,gd=groundDim();
+  var GEN=[1,0,0,1,1,0,0,0];   /* which buckets the per-frame lattice can emit */
   /* Ground, city and city-core are the generated body of the cloud and go first,
      so the drawn geography — coast, ridge, Fuji, and the streets and sites — prints
      over the top of it rather than under. */
-  for(var k=0;k<6;k++){
+  for(var k=0;k<NB;k++){
     var cnt=bufN[k];if(!cnt)continue;
-    var a=ALPHA[k];
+    var a=ALPHA[k]*(GEN[k]?gd:1);
     if(a<=.01)continue;
     bx.globalAlpha=a;bx.fillStyle=COL.pts[k];
-    var sz=Math.max(1,Math.round(SIZE[k]*zf)),arr=buf[k];
+    var sz=Math.max(1,Math.round(SIZE[k]*Math.min(zf,ZCAP[k]))),arr=buf[k];
     for(var t=0;t<cnt;t++)bx.fillRect(arr[t*2]|0,arr[t*2+1]|0,sz,sz);
   }
   bx.globalAlpha=1;
