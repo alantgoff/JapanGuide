@@ -1341,11 +1341,18 @@ function readTheme(){
 var ALPHA=[.38,.92,.72,.66,.97,.92];
 var SIZE=[.8,1.1,1.0,1.05,1.45,1.15];
 
+/* The drawn layers are vector work and text, so they earn their retina backing
+   store. The tile sheet does not: GSI serves no @2x raster and pickZ deliberately
+   asks for a zoom in CSS pixels, so at dpr 2 every tile was already being upscaled
+   two-fold — rasterising that upscale into four times the pixels buys no detail
+   that exists, and tiles are the largest fill in the frame. Draw it at 1 and let
+   the compositor do the same scale once, on its own thread. */
 function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
   W=stage.clientWidth;H=stage.clientHeight;
-  [tlc,bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
-  tlx.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
+  [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
+  tlc.width=Math.round(W);tlc.height=Math.round(H);
+  tlx.setTransform(1,0,0,1,0,0);bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
   dirty=true;
 }
 
@@ -1369,6 +1376,8 @@ function fit(box,pad){
 
    Nothing is fetched until you zoom past TILE_IN, so the opening view still costs
    no network at all, and if the tiles never arrive the ink map is left untouched. */
+/* filt is baked into each tile once on arrival — see bake(). It belongs to the
+   source rather than the draw call because a cached tile is only ever one layer. */
 var TSRC={
   pale :{url:'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',        min:2,max:18},
   blank:{url:'https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png',       min:5,max:14},
@@ -1385,7 +1394,7 @@ var layerMode='streets',jaLabels=true,blankForced=false;
    the layer you actually zoomed in for — would arrive a full round late on every
    new view. */
 var TC=new Map(),TILE_CAP=384,TILE_INFLIGHT=8,TILE_RETRIES=1,TILE_RETRY_MS=5000;
-var inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
+var inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0,tilesWanted=0;
 
 /* The ink treatment, in one place, because it is the whole of how this looks and
    it is the thing you will want to nudge after seeing it on real tiles.
@@ -1397,8 +1406,8 @@ var inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
    pale palette, which is far lighter than intuition suggests — its water is luma
    220 against a 242 ground — and an eighth of a stop either way is the difference
    between a legible river and no river at all. Solved for ground -> 255 and
-   water -> ~200; measured end-to-end, the ladder runs buildings 6%, parks 8%,
-   water 14%, arterials 14%, lane casings 25%, rail 49%, lettering 62%.
+   water -> ~200; measured end-to-end, the ladder runs buildings 5%, parks 10%,
+   arterials 14%, water 14%, lane casings 25%, rail 50%, lettering 62%.
 
    Terrain: lift the lit slopes clear to white so they multiply away entirely and
    only the shadowed side prints. A hillshade that darkens everywhere is a grey
@@ -1415,6 +1424,7 @@ var INK={
 /* Canvas filters do the desaturating. Safari was late to them; without them the
    pass still reads, just flatter, so detect once and carry on either way. */
 var FILT=(function(){try{tlx.filter='grayscale(1)';var ok=tlx.filter==='grayscale(1)';tlx.filter='none';return ok}catch(e){return false}})();
+TSRC.pale.filt=TSRC.blank.filt=INK.streetF;TSRC.hill.filt=INK.hillF;
 
 function smoothstep(a,b,x){var t=(x-a)/(b-a);if(t<0)t=0;else if(t>1)t=1;return t*t*(3-2*t)}
 function tileFade(){return layerMode==='ink'?0:smoothstep(TILE_IN,TILE_FULL,V.s)}
@@ -1466,12 +1476,34 @@ function noteTiles(){
    otherwise leave a permanent hole in the sheet until you happened to pan away and
    back, and unlimited retries against a host that is genuinely gone is the other
    way to get this wrong. */
+/* The desaturation is a property of the tile, not of the frame — the same pixels
+   resolve to the same ink every time. Running it inside the draw loop meant a 1440p
+   retina window pushed roughly 28 million filtered pixels per frame, twice over for
+   terrain and streets, and canvas filters take the slow path: an offscreen surface
+   allocated and a filter chain run per drawImage. Bake it once on arrival instead
+   and the frame is left with plain blits. Costs one 256px canvas per cached tile,
+   which is why TILE_CAP is sized in tiles rather than left to grow. */
+function bake(e,src){
+  if(!FILT)return;
+  var img=e.img,w=img.naturalWidth||256,h=img.naturalHeight||256;
+  try{
+    var c=document.createElement('canvas');c.width=w;c.height=h;
+    var g=c.getContext('2d');if(!g)return;
+    g.filter=TSRC[src].filt;g.drawImage(img,0,0);
+    e.bm=c;e.img=null;                 /* the decoded original is dead weight now */
+  }catch(err){/* leave e.bm as the raw image; it just draws unfiltered */}
+}
+
 function fetchTile(src,z,x,y,k,e){
   e.st='load';inflight[src]=(inflight[src]|0)+1;
   var img=new Image();e.img=img;
   /* No crossOrigin: we never read these pixels back, and asking for CORS would
      only add a way for the request to fail. */
-  img.onload=function(){e.st='ok';inflight[src]--;tilesArrived=true};
+  img.onload=function(){
+    e.w=img.naturalWidth||256;e.h=img.naturalHeight||256;
+    e.bm=img;bake(e,src);
+    e.st='ok';inflight[src]--;tilesArrived=true;
+  };
   img.onerror=function(){
     e.st='err';inflight[src]--;tileFails++;tilesArrived=true;
     if(e.n>=TILE_RETRIES)return;
@@ -1525,51 +1557,63 @@ function visibleTiles(src,z){
   return {tz:tz,list:list};
 }
 
-function drawLayer(src,z,alpha,filter){
+/* No filter is set here: every tile arrived already desaturated. This loop is now
+   only blits, which is what lets it run per-frame during a drag. */
+function drawLayer(src,z,alpha){
   var v=visibleTiles(src,z);if(!v)return 0;
   var S=TSRC[src],tz=v.tz,list=v.list;
   /* Requesting mid-flight, or mid-wheel, would queue every zoom level the camera
      passes through. */
   var want=!anim&&performance.now()>=zoomQuietUntil,drew=0;
-  tlx.globalAlpha=alpha;if(FILT)tlx.filter=filter;
+  tlx.globalAlpha=alpha;
   for(var i=0;i<list.length;i++){
     var t=list[i],X=t.X,Y=t.Y,w=t.px1-t.px0,hgt=t.py1-t.py0;
     var e=getTile(src,tz,X,Y,want);
-    if(e&&e.st==='ok'){tlx.drawImage(e.img,t.px0,t.py0,w,hgt);drew++;continue}
+    if(e&&e.st==='ok'){tlx.drawImage(e.bm,t.px0,t.py0,w,hgt);drew++;continue}
     /* Cover the gap with an ancestor so panning stays continuous, coarse then sharp. */
     for(var up=1;up<=4;up++){
       var az=tz-up;if(az<S.min)break;
       var ax=X>>up,ay=Y>>up,ae=TC.get(src+'/'+az+'/'+ax+'/'+ay);
       if(!ae||ae.st!=='ok')continue;
-      var f=1<<up,sw=ae.img.naturalWidth/f,sh=ae.img.naturalHeight/f;
-      tlx.drawImage(ae.img,(X-(ax<<up))*sw,(Y-(ay<<up))*sh,sw,sh,t.px0,t.py0,w,hgt);
+      var f=1<<up,sw=ae.w/f,sh=ae.h/f;
+      tlx.drawImage(ae.bm,(X-(ax<<up))*sw,(Y-(ay<<up))*sh,sw,sh,t.px0,t.py0,w,hgt);
       drew++;break;
     }
   }
-  if(FILT)tlx.filter='none';
   tlx.globalAlpha=1;
+  tilesWanted+=list.length;
   return drew;
 }
 
 function drawTiles(){
-  tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;
+  tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;tilesWanted=0;
   var f=tileFade();if(f<=.002){noteTiles();return}
   var z=pickZ(),d=0;
-  d+=drawLayer('hill',z,(FILT?INK.hillA:INK.flatHillA)*f,INK.hillF);
+  d+=drawLayer('hill',z,(FILT?INK.hillA:INK.flatHillA)*f);
   if(layerMode==='streets'){
     /* GSI publishes no label-free raster above z14. Stretching it to street level
        would be a twenty-fold upscale — not "coarser", just mush — so one level of
        give, then the labelled sheet comes back. The control says when it has. */
     var ssrc=jaLabels||z>TSRC.blank.max+1?'pale':'blank',bf=ssrc==='pale'&&!jaLabels;
     if(bf!==blankForced){blankForced=bf;syncLayers()}
-    streetDrew=drawLayer(ssrc,z,(FILT?INK.streetA:INK.flatStreetA)*f,INK.streetF);
+    streetDrew=drawLayer(ssrc,z,(FILT?INK.streetA:INK.flatStreetA)*f);
     d+=streetDrew;
   }
   tilesDrew=d;noteTiles();
   /* A large screen can want more tiles for one view than a fixed cache would hold,
-     which turns every pan into a re-fetch of ground already seen. Size the cache to
-     the view instead, with a couple of screens of history either side of it. */
-  TILE_CAP=Math.max(384,Math.min(1200,d*3));
+     which turns every pan into a re-fetch of ground already seen — so the cap is
+     sized to the working set, never below it, with 1.6x of room to pan before
+     anything still on screen is evicted.
+
+     Sized off tiles *wanted*, not tiles drawn. Drawn is a measure of what survived
+     the cache, so a cap set from it feeds back on itself: evict too hard, fewer
+     tiles draw, the cap drops again, and a 4K window settles at a permanent 60%
+     of the sheet. Wanted is a property of the window and the zoom alone.
+
+     The ceiling matters more than it used to: a baked tile is a 256px canvas,
+     ~256KB the browser cannot discard and re-decode the way it can an Image, so
+     768 is ~190MB and that is the deliberate limit. */
+  TILE_CAP=Math.max(192,Math.min(768,Math.round(tilesWanted*1.6)));
   if(!d)return;
   /* Without canvas filters the tiles keep their survey colours, and a wash of ink
      over them is the cheap repair. With filters this would only grey the page. */
@@ -1928,12 +1972,16 @@ function renderOver(){
   ox.globalAlpha=1;
 }
 /* ---- loop ---- */
-var needOver=true;
+var needOver=true,overTick=0;
 function loop(){
   if(anim)stepAnim();
   if(tilesArrived){tilesArrived=false;dirty=true}
   if(dirty){drawTiles();renderBase();dirty=false;needOver=true;updateReadout()}
-  if(!reduce&&(sel!==null||trip.length>1)){phase++;needOver=true}
+  /* A marching dash and a pulsing marker were holding the whole overlay at 60fps
+     for as long as anything was selected — and renderOver re-places every label,
+     measuring text as it goes. Both animations read identically at 30. phase steps
+     by two so neither changes speed. */
+  if(!reduce&&(sel!==null||trip.length>1)&&(overTick^=1)){phase+=2;needOver=true}
   if(needOver){renderOver();needOver=false}
   requestAnimationFrame(loop);
 }
