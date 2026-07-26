@@ -411,7 +411,7 @@ var KW={
 "Kinkaku-ji":"golden pavilion rokuon-ji","Ginkaku-ji":"silver pavilion jisho-ji",
 "Kiyomizu-dera":"higashiyama otowa sannenzaka","Arashiyama Bamboo Grove":"sagano togetsukyo",
 "Ryoan-ji":"zen rock garden karesansui","Nijo Castle":"nightingale floors nijojo shogun",
-"Gion":"geisha geiko hanamikoji pontocho","Nishiki Market":"kyoto kitchen shijo",
+"Gion":"geisha geiko hanamikoji","Pontocho Alley":"pontocho ponto kamo yuka kiyamachi","Nishiki Market":"kyoto kitchen shijo",
 "Sanjusangen-do":"kannon rengeo-in","Tofuku-ji":"maple autumn tsutenkyo",
 "Kurama & Kibune":"kibune kurama onsen eizan hike","Byodo-in":"uji phoenix hall ten yen tea",
 "Kodai-ji":"higashiyama nene","Heian Jingu":"okazaki torii","Daitoku-ji":"daisen-in koto-in zen",
@@ -468,6 +468,7 @@ var PLACES = [
 ["Ryoan-ji","龍安寺","temple","kyoto",35.0345,135.7183,2,"Fifteen rocks in gravel; from no angle can you see all fifteen.","¥600. Ten minutes' walk from Kinkaku-ji — do them back to back."],
 ["Nijo Castle","二条城","culture","kyoto",35.0142,135.7481,2,"Shogun's palace with nightingale floors that squeal to betray intruders.","¥1,300. Closed Tuesdays in winter months. The painted screens are originals."],
 ["Gion","祇園","view","kyoto",35.0037,135.7752,1,"Wooden machiya teahouses on stone lanes; geiko crossing between them at dusk.","Free to walk. Photography is banned on Hanamikoji's private lanes — obey the signs."],
+["Pontocho Alley","先斗町","food","kyoto",35.0064,135.7706,2,"A lantern-lit lane one arm's width across, running five blocks between Shijo and Sanjo.","Kamo-side restaurants put decks out over the river from May to September. Cash-only is common, and some houses still decline visitors without an introduction."],
 ["Nishiki Market","錦市場","food","kyoto",35.0050,135.7648,2,"Four hundred years and five blocks of pickles, tofu, knives and skewers.","09:00–18:00. Eat at the stall, not while walking — it's the local rule."],
 ["Tenryu-ji","天龍寺","temple","kyoto",35.0158,135.6738,3,"A 14th-century garden designed to borrow the mountains behind it.","¥500 garden. At the bamboo grove's south entrance."],
 ["Sanjusangen-do","三十三間堂","temple","kyoto",34.9879,135.7717,3,"1,001 gilded Kannon statues in a single 120m hall. No photographs.","¥600. The longest wooden building in Japan."],
@@ -581,8 +582,14 @@ function myInv(y){return R2D*(2*Math.atan(Math.exp(y*D2R))-Math.PI/2)}
 
 /* ===== deterministic prng ===== */
 function rng(seed){var a=seed>>>0;return function(){a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-var rnd=rng(20260725);
-function gauss(){var u=1-rnd(),v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function gaussOf(r){return function(){var u=1-r(),v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}}
+var rnd=rng(20260725), gauss=gaussOf(rnd);
+/* The base cloud and the authored geography draw from different wells. One shared
+   stream would make the whole country order-dependent on the site table: adding
+   Pontocho, or moving two temples around, would silently reshuffle every coastline
+   point after it — which makes visual diffs useless and "did I break the base map?"
+   unanswerable. Sites get edited fifty times; the coastline does not. */
+var arnd=rng(0x5AC1E5), agauss=gaussOf(arnd);
 
 function inPoly(lng,lat,poly){var c=false;for(var i=0,j=poly.length-1;i<poly.length;j=i++){var xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];if(yi>lat!==yj>lat&&lng<(xj-xi)*(lat-yi)/(yj-yi)+xi)c=!c}return c}
 function bbox(poly){var b=[1e9,1e9,-1e9,-1e9];for(var i=0;i<poly.length;i++){var p=poly[i];if(p[0]<b[0])b[0]=p[0];if(p[1]<b[1])b[1]=p[1];if(p[0]>b[2])b[2]=p[0];if(p[1]>b[3])b[3]=p[1]}return b}
@@ -621,6 +628,172 @@ function walk(line,step,jit,b,z,closed){
       push(lng,lat,b,z*(.55+rnd()*.9));
     }
   }
+}
+
+/* ===== authored forms =====================================================
+   Fuji was the only landmark this map ever drew as itself, and it worked for one
+   reason: the shape is *structured*, not scattered. Nine concentric rings for the
+   contours and ten radial spokes for the fall lines — and it is the spokes that do
+   it. Take them away and a mountain becomes a smudge. Everything below is that
+   lesson generalised, so a place can be drawn as what it looks like from above
+   instead of as a dot with a label.
+
+   Authoring is in metres from an anchor point, never in degrees. A degree of
+   longitude is 18% shorter than a degree of latitude at Kyoto, so anything authored
+   in raw degrees comes out squashed, and nobody can hold "0.000041 degrees" in their
+   head as a shopfront. aspect() and mLat() are the only two places that know. */
+var M2DEG=1/110574, TAU=Math.PI*2;
+function mLat(m){return m*M2DEG}                  /* metres -> degrees of latitude */
+function aspect(lat){return 1/Math.cos(lat*D2R)}  /* lng degrees per lat degree */
+
+/* Presence, then layout, then detail. Every authored thing rides these three
+   numbers, so the whole staging moves with one edit instead of fifty. They sit
+   deliberately above the stored city grain, which runs out around 7800 — the band
+   where the old cloud gave up is exactly where the drawing arrives. */
+var Z_SITE=[900,9000,34000], Z_ST=[1200,9000,26000];
+
+/* A cluster with an extent and an orientation, and no claim beyond that. Parks,
+   groves, gravel gardens, and the "something is here" tier of every site — the
+   thing that keeps a place visible at city zoom without pretending to detail it. */
+function blob(lng,lat,rM,n,b,z,o){
+  o=o||{};
+  var ax=aspect(lat),r=mLat(rM),e=o.conc===undefined?1.55:o.conc;
+  var ea=o.ea||1,eb=o.eb||1,th=(o.rot||0)*D2R,cs=Math.cos(th),sn=Math.sin(th);
+  for(var i=0;i<n;i++){
+    var t=o.hollow?o.hollow+(1-o.hollow)*arnd():Math.pow(arnd(),e);
+    var a=arnd()*TAU,dx=Math.cos(a)*t*ea,dy=Math.sin(a)*t*eb;
+    push(lng+(dx*cs-dy*sn)*r*ax, lat+(dx*sn+dy*cs)*r, b, z*(.8+arnd()*.4));
+  }
+}
+
+/* A band of dots along a polyline — the workhorse, and the one that carries this
+   whole feature.
+
+   What makes a lane read as a lane is not the lane. It is the two frontages and the
+   empty gap between them, which is why the carriageway is deliberately the sparsest
+   part: the rails carry the silhouette and the middle stays quiet. At Pontocho's
+   4.5m the two rails only separate visually near the top of the zoom range, and
+   below that they merge into a single bright thin line — which is also correct, and
+   is how an alley reads on a small-scale map. The LOD falls out of the geometry.
+
+     w      metres between frontages (0 = a single jittered centre line)
+     pitch  metres between stations along the path
+     o.rail frontage thickness   o.fill carriageway density 0..1
+     o.ribs metres between cross-ties: torii posts, market stalls, a row of cherries
+     o.closed  join the last vertex back to the first — moats, loops */
+function corridor(path,w,pitch,b,z,o){
+  o=o||{};
+  var rail=o.rail===undefined?Math.max(1.2,w*.35):o.rail;
+  var fd=o.fill===undefined?.30:o.fill;
+  var n=path.length,lim=o.closed?n:n-1,i,s;
+  for(i=0;i<lim;i++){
+    var a=path[i],c=path[(i+1)%n],ax=aspect((a[1]+c[1])*.5);
+    /* work in lat-degrees on both axes so the path is isotropic, then convert back */
+    var dx=(c[0]-a[0])/ax, dy=c[1]-a[1], len=Math.sqrt(dx*dx+dy*dy);
+    if(len<=0)continue;
+    var ux=dx/len,uy=dy/len,nx=-uy,ny=ux,L=len/M2DEG;
+    var put=function(al,off,zz){
+      push(a[0]+(ux*al+nx*off)*ax, a[1]+uy*al+ny*off, b,
+           /* tighter than walk's .55-1.45 band: authored forms should arrive
+              crisply. A lane that materialises a third at a time reads as noise. */
+           zz*(.85+arnd()*.3));
+    };
+    var steps=Math.max(1,Math.round(L/pitch));
+    for(s=0;s<steps;s++){
+      var al=len*(s+arnd()*.94)/steps;
+      if(w>0&&rail>0){
+        for(var sg=-1;sg<=1;sg+=2)put(al,mLat(sg*w*.5+agauss()*rail*.5),z);
+        if(arnd()<fd)put(al,mLat((arnd()-.5)*w*.72),z);
+      }else put(al,mLat(agauss()*(o.jit||2.5)),z);
+    }
+    if(o.ribs){
+      var rn=Math.max(1,Math.round(L/o.ribs));
+      for(var r=0;r<rn;r++){
+        var rt=len*(r+.5)/rn;
+        for(var q=-1;q<=1;q+=2)put(rt,mLat(q*w*.5*(o.ribOut||1.15)),o.ribZ||z);
+      }
+    }
+  }
+}
+
+/* A hall, seen from above: a rectangle with one strong line down it. That ridge is
+   doing most of the work — it is what separates a building from a blob — and the
+   perimeter is the eaves. The interior stays thin on purpose so the outline keeps
+   being the shape, the same way Fuji's rings stay unjittered while its spokes do not.
+     o.posts  metres between colonnade dots inside the footprint (Kiyomizu's stilts)
+     o.solid  interior density   o.ridge:false to suppress the ridge line */
+function hall(lng,lat,wm,hm,rot,b,z,o){
+  o=o||{};
+  var ax=aspect(lat),th=(rot||0)*D2R,cs=Math.cos(th),sn=Math.sin(th),i,j;
+  function put(u,v,zz){push(lng+mLat(u*cs-v*sn)*ax, lat+mLat(u*sn+v*cs), b, zz)}
+  var ep=o.edge||2.6,hw=wm*.5,hh=hm*.5;
+  var cx=Math.max(2,Math.round(wm/ep)),cy=Math.max(2,Math.round(hm/ep));
+  for(i=0;i<=cx;i++){var u=-hw+wm*i/cx;put(u+agauss()*.5,-hh+agauss()*.5,z);put(u+agauss()*.5,hh+agauss()*.5,z)}
+  for(i=1;i<cy;i++){var v=-hh+hm*i/cy;put(-hw+agauss()*.5,v+agauss()*.5,z);put(hw+agauss()*.5,v+agauss()*.5,z)}
+  if(o.ridge!==false){
+    var rn=Math.max(2,Math.round(wm/(o.ridgeP||3.2)));
+    for(i=0;i<=rn;i++)put(-hw+wm*i/rn+agauss()*.4,agauss()*.6,z);
+  }
+  var ni=Math.round(wm*hm/(ep*ep)*(o.solid===undefined?.16:o.solid));
+  for(i=0;i<ni;i++)put((arnd()-.5)*wm*.92,(arnd()-.5)*hm*.92,z*(.9+arnd()*.3));
+  if(o.posts){
+    var px=Math.max(1,Math.round(wm/o.posts)),py=Math.max(1,Math.round(hm/o.posts));
+    for(i=0;i<=px;i++)for(j=0;j<=py;j++)put(-hw+wm*i/px,-hh+hm*j/py,o.postZ||z*1.5);
+  }
+}
+/* A precinct is a table of halls placed in metres east and north of one anchor.
+   [eastM, northM, widthM, depthM, rotDeg, zMul?, opts?] — the whole complex moves
+   by editing one coordinate, which is the only way authoring fifty of these stays
+   sane. */
+function precinct(lng,lat,halls,b,z){
+  var ax=aspect(lat);
+  for(var i=0;i<halls.length;i++){
+    var h=halls[i];
+    hall(lng+mLat(h[0])*ax, lat+mLat(h[1]), h[2],h[3],h[4]||0, b, z*(h[5]||1), h[6]);
+  }
+}
+
+/* Concentric rings plus radial fall-lines — Fuji, generalised. Density falls off
+   with radius so the summit reads as a bright core, and the spokes read as slope.
+   Rings alone look like a crater. */
+function cone(lng,lat,o){
+  var ax=aspect(lat),rings=o.rings||9,spokes=o.spokes===undefined?10:o.spokes;
+  var r0=mLat(o.r0||1330), r1=mLat(o.r1||14500);
+  var b=o.b===undefined?5:o.b, z0=o.z0||0, z1=o.z1===undefined?360:o.z1, k,i;
+  for(k=0;k<rings;k++){
+    var t=rings>1?k/(rings-1):0, rr0=r0+(r1-r0)*t;
+    var cnt=Math.round((o.n0||14)+(o.n1||110)*t);
+    var z=t<(o.zFrom===undefined?.4:o.zFrom)?z0:z1*(.35+.65*t);
+    for(i=0;i<cnt;i++){
+      var th=(i+arnd())/cnt*TAU, rr=rr0*(.92+arnd()*.16);
+      push(lng+Math.cos(th)*rr*ax, lat+Math.sin(th)*rr, b, z);
+    }
+  }
+  for(k=0;k<spokes;k++){
+    var an=k/spokes*TAU+(o.phase||.3), sn2=o.spokeN||26, jx=mLat(o.jit||330);
+    for(i=0;i<sn2;i++){
+      var u=i/sn2, rr2=r0*1.05+(r1-r0*1.05)*u;
+      push(lng+Math.cos(an)*rr2*ax+agauss()*jx*ax, lat+Math.sin(an)*rr2+agauss()*jx,
+           b, u<.38?z0:z1*.55);
+    }
+  }
+}
+
+/* PLACES is [name,ja,cat,region,lat,lng,...]; every geographic array in this file is
+   [lng,lat]. Hand-copying between the two conventions is the mistake that would
+   happen fifty times over, so it happens here once instead — an authored site never
+   states a coordinate, it names a place and inherits it. A site that is not in the
+   guide cannot be drawn, which is the right rule anyway.
+   AUTHORED doubles as the index manifest the tests scan. */
+var PLC={};
+for(var pq=0;pq<PLACES.length;pq++)PLC[PLACES[pq][0]]=[PLACES[pq][5],PLACES[pq][4]];
+var AUTHORED=[];
+function SITE(name,fn){
+  var c=PLC[name];
+  if(!c){AUTHORED.push({name:name,missing:true});return}
+  var i0=NPTS;
+  fn(c[0],c[1],Z_SITE);
+  AUTHORED.push({name:name,lng:c[0],lat:c[1],i0:i0,i1:NPTS});
 }
 
 function buildCloud(){
@@ -687,21 +860,11 @@ function buildCloud(){
     walk(RIDGES[i],.02,.028,2,0,false);
     walk(RIDGES[i],.008,.020,2,240,false);
   }
-  /* Fuji: a radial cone, legible without a label */
-  for(k=0;k<9;k++){
-    var ring=.012+k*.0135, cnt=14+k*11;
-    for(i=0;i<cnt;i++){
-      var th=(i+rnd())/cnt*Math.PI*2, rr=ring*(.92+rnd()*.16);
-      push(FUJI[0]+Math.cos(th)*rr*1.18,FUJI[1]+Math.sin(th)*rr,5,k<4?0:120+k*30);
-    }
-  }
-  for(k=0;k<10;k++){
-    var ang=k/10*Math.PI*2+.3;
-    for(i=0;i<26;i++){
-      var rr2=.014+i/26*.115;
-      push(FUJI[0]+Math.cos(ang)*rr2*1.18+gauss()*.0035,FUJI[1]+Math.sin(ang)*rr2+gauss()*.003,5,i<10?0:200);
-    }
-  }
+  /* Fuji, now one call to the primitive it taught us. The hand-rolled 1.18 longitude
+     squash it used to carry was an approximation of aspect(35.36)=1.226; cone() has
+     the real number. Same mountain, and every other landmark now gets the same
+     treatment for the price of a line. */
+  cone(FUJI[0],FUJI[1],{rings:9,spokes:10,r0:1330,r1:14450,n0:14,n1:110,b:5,z1:390});
   /* urban glow */
   for(i=0;i<URBAN.length;i++){
     var u=URBAN[i];
@@ -714,6 +877,212 @@ function buildCloud(){
   }
 }
 buildCloud();
+
+/* ===== the drawing at street scale ======================================== */
+
+/* Named streets are stored points: they are exact, they are few, and they want the
+   culling index. The anonymous fabric between them is not authored at all — a real
+   Heian grid over central Kyoto at 8m dot pitch would be more points than the entire
+   rest of this map, for something nobody will ever look at individually. The ground
+   lattice snaps onto it instead (see GRIDS in renderBase), which costs no bytes.
+   [w,s,e,n, originLng,originLat, blockLng, blockLat, strength] */
+var GRIDS=[
+  [135.7300,34.9790,135.7860,35.0400, 135.75935,34.98950, .001316,.001085, 1],   /* Kyoto: the 120m cho, cardinal */
+  [135.4900,34.6620,135.5170,34.7000, 135.50060,34.66590, .001425,.000814, .9],  /* Osaka Semba */
+  [135.7900,34.6740,135.8360,34.7000, 135.80480,34.68510, .001100,.000900, .7]   /* Nara, Heijo-kyo, fainter */
+];
+
+function buildStreets(){
+  var Z=Z_ST;
+  /* --- Kyoto. The one Japanese city that really is a grid, so the arterials alone
+         orient you: a cross of avenues, then everything else on approach. --- */
+  var KY=[
+    [[135.7300,35.0038],[135.7785,35.0037]],   /* Shijo-dori */
+    [[135.7400,35.0107],[135.7760,35.0106]],   /* Oike-dori */
+    [[135.7594,34.9850],[135.7594,35.0400]],   /* Karasuma-dori */
+    [[135.7690,34.9950],[135.7690,35.0300]],   /* Kawaramachi-dori */
+    [[135.7785,34.9830],[135.7785,35.0350]],   /* Higashioji-dori */
+    [[135.7513,34.9850],[135.7513,35.0400]]    /* Horikawa-dori */
+  ];
+  for(var i=0;i<KY.length;i++){
+    corridor(KY[i],0,20,6,Z[0],{jit:2.5});                  /* the avenue, far out */
+    corridor(KY[i],i<2?26:20,13,6,Z[2],{rail:3.4,fill:.2}); /* its two frontages, close in */
+  }
+  /* The Kamo is the axis everything in Kyoto is described against — east bank or
+     west, above Shijo or below. Drawn as banks with a void between: a river that
+     is stippled solid is just more city. */
+  corridor([[135.7745,35.0430],[135.7730,35.0290],[135.7718,35.0155],
+            [135.7712,35.0040],[135.7700,34.9930],[135.7660,34.9840]],60,14,1,Z[0],{fill:0,rail:5});
+  corridor([[135.7688,35.0110],[135.7681,35.0035],[135.7674,34.9960]],6,10,1,Z[2],{fill:0,rail:1.6});  /* Takase canal */
+
+  /* --- Tokyo has no grid, and pretending otherwise would read as mush. What it has
+         is a loop, a river, a moat and a dozen named avenues. --- */
+  var YAMANOTE=[
+    [139.7671,35.6812],[139.7635,35.6750],[139.7583,35.6659],[139.7570,35.6555],
+    [139.7387,35.6285],[139.7286,35.6197],[139.7233,35.6262],[139.7157,35.6339],
+    [139.7100,35.6467],[139.7016,35.6580],[139.7027,35.6702],[139.7020,35.6830],
+    [139.7006,35.6896],[139.7000,35.7013],[139.7038,35.7124],[139.7064,35.7212],
+    [139.7109,35.7295],[139.7285,35.7317],[139.7393,35.7335],[139.7469,35.7365],
+    [139.7608,35.7380],[139.7668,35.7320],[139.7708,35.7281],[139.7784,35.7207],
+    [139.7770,35.7138],[139.7745,35.7075],[139.7731,35.6984],[139.7708,35.6918]
+  ];
+  corridor(YAMANOTE,0,26,6,Z[0],{closed:true,jit:3});
+  corridor(YAMANOTE,18,16,6,Z[2],{closed:true,rail:4,fill:.12});
+  corridor([[139.8010,35.7480],[139.7995,35.7280],[139.7987,35.7108],
+            [139.7940,35.6900],[139.7880,35.6700],[139.7830,35.6500]],180,20,1,Z[0],{fill:0,rail:7});
+  corridor([[139.7583,35.6872],[139.7576,35.6820],[139.7551,35.6779],[139.7508,35.6762],
+            [139.7455,35.6790],[139.7424,35.6838],[139.7440,35.6890],[139.7502,35.6926],
+            [139.7550,35.6912]],70,16,1,Z[0],{fill:0,closed:true,rail:5});
+  var TK=[
+    [[139.7745,35.6740],[139.7715,35.6950],[139.7700,35.7080]],           /* Chuo-dori */
+    [[139.7130,35.6580],[139.7040,35.6900],[139.7060,35.7290]],           /* Meiji-dori */
+    [[139.7020,35.6620],[139.7180,35.6700],[139.7380,35.6740]],           /* Aoyama-dori */
+    [[139.7550,35.6700],[139.7560,35.6820],[139.7540,35.6930]],           /* Hibiya-dori */
+    [[139.7460,35.6940],[139.7690,35.6960],[139.7860,35.7000]],           /* Yasukuni-dori */
+    [[139.7590,35.6640],[139.7760,35.6720],[139.7900,35.6790]]            /* Harumi-dori */
+  ];
+  for(i=0;i<TK.length;i++){
+    corridor(TK[i],0,22,6,Z[0],{jit:3});
+    corridor(TK[i],24,15,6,Z[2],{rail:3.6,fill:.18});
+  }
+
+  /* --- Osaka: one spine, one canal, one island. --- */
+  corridor([[135.5006,34.7025],[135.5006,34.6840],[135.5013,34.6659]],44,14,6,Z[0],
+           {rail:4,fill:.2,ribs:12,ribZ:Z[2]});                            /* Midosuji, ginkgo rows */
+  corridor([[135.4956,34.66875],[135.5095,34.66865]],28,9,1,Z[1],{fill:0,rail:3});  /* Dotonbori canal */
+  corridor([[135.4956,34.66950],[135.5095,34.66940]],9,6,6,Z[2],{rail:2,ribs:7});   /* the neon strip */
+  corridor([[135.4830,34.6955],[135.5170,34.6952]],40,14,1,Z[1],{fill:0,rail:4});   /* Dojima, north bank */
+  corridor([[135.4830,34.6925],[135.5170,34.6922]],40,14,1,Z[1],{fill:0,rail:4});   /* Tosabori, south bank */
+}
+
+function buildSites(){
+  /* Kiyomizu-dera. The whole silhouette is the stage: a deck cantilevered west off
+     the hillside on a forest of stilts. Hollow rectangle, no ridge, standing on a
+     regular lattice of posts — a building drawn as a building would lose it. */
+  SITE('Kiyomizu-dera',function(lng,lat,Z){
+    blob(lng,lat,150,52,7,Z[0],{conc:1.3});
+    precinct(lng,lat,[
+      [   0,   0, 36,22, 12],
+      [ -28,  -6, 20,17, 12, 1, {posts:3.4,solid:.05,ridge:false}],
+      [  26,  34, 12,12, 12],
+      [ -96, -34, 11,11, 12],
+      [-118, -30,  9, 9, 12],
+      [-104, -52,  8, 8, 12, 1.4]
+    ],7,Z[1]);
+    corridor([[135.78050,34.99560],[135.78270,34.99500],[135.78400,34.99470]],7,4.5,6,Z[2],{rail:2.2,fill:.25});
+  });
+
+  /* Fushimi Inari: ten thousand torii up a wooded ridge. The ribs are the posts —
+     without them this is a footpath, with them it is the tunnel. */
+  SITE('Fushimi Inari Taisha',function(lng,lat,Z){
+    blob(lng,lat,120,40,7,Z[0],{conc:1.4});
+    precinct(lng,lat,[[0,0,26,16,0],[-8,-40,14,10,0],[30,18,10,10,0]],7,Z[1]);
+    corridor([[135.77270,34.96710],[135.77415,34.96768],[135.77530,34.96722],
+              [135.77690,34.96795],[135.77772,34.96700],[135.77905,34.96742],
+              [135.78010,34.96690]],
+             5,4.2,7,Z[1],{rail:1.6,fill:.1,ribs:3.6,ribZ:Z[2]});
+  });
+
+  /* Pontocho. Four and a half metres wide, five blocks long, and that ratio is the
+     entire drawing — two frontages with a gap you could not get a car down. */
+  SITE('Pontocho Alley',function(lng,lat,Z){
+    corridor([[135.77085,35.00405],[135.77060,35.00640],[135.77035,35.00895]],
+             4.5,3.6,7,Z[1],{rail:1.5,fill:.18});
+  });
+
+  SITE('Gion',function(lng,lat,Z){
+    blob(lng,lat,170,44,7,Z[0],{conc:1.2,ea:1.3});
+    corridor([[135.77530,35.00365],[135.77535,35.00185]],7,4.2,7,Z[1],{rail:2.4,fill:.2});   /* Hanamikoji */
+    corridor([[135.77380,35.00320],[135.77720,35.00315]],6,4.5,7,Z[2],{rail:2});             /* Shinbashi-dori */
+  });
+
+  SITE('Nishiki Market',function(lng,lat,Z){
+    corridor([[135.76250,35.00500],[135.76870,35.00505]],4,3.5,7,Z[1],{rail:1.4,fill:.12,ribs:5,ribZ:Z[2]});
+  });
+
+  SITE('Arashiyama Bamboo Grove',function(lng,lat,Z){
+    blob(lng,lat,190,120,7,Z[0],{conc:.85,ea:.8,eb:1.25});
+    corridor([[135.67080,35.01560],[135.67180,35.01720],[135.67240,35.01860]],6,4,7,Z[1],{rail:2,ribs:9,ribZ:Z[2]});
+  });
+
+  SITE('Kinkaku-ji',function(lng,lat,Z){
+    blob(lng+.00055,lat-.00035,95,64,1,Z[1],{hollow:.55});      /* the pond it stands in */
+    precinct(lng,lat,[[0,0,11,11,20,1.2],[62,40,9,9,20]],7,Z[1]);
+  });
+
+  SITE('Ginkaku-ji',function(lng,lat,Z){
+    blob(lng,lat,110,40,7,Z[0],{conc:1.3});
+    precinct(lng,lat,[[0,0,10,10,15,1.2],[24,-14,16,12,15],[-18,20,13,9,15]],7,Z[1]);
+  });
+
+  SITE("Philosopher's Path",function(lng,lat,Z){
+    corridor([[135.79560,35.02840],[135.79470,35.02610],[135.79420,35.02380],[135.79370,35.02170]],
+             5,6,7,Z[1],{rail:2,ribs:11,ribZ:Z[2]});            /* the ribs are the cherries */
+  });
+
+  SITE('Nijo Castle',function(lng,lat,Z){
+    corridor([[135.74560,35.01180],[135.75130,35.01180],[135.75130,35.01640],[135.74560,35.01640]],
+             48,14,1,Z[0],{fill:0,closed:true,rail:4});
+    precinct(lng,lat,[[-60,-40,44,28,0],[70,50,20,20,0,1.2]],7,Z[1]);
+  });
+
+  /* Sanjusangen-do is 120 metres of one hall. The building *is* the site. */
+  SITE('Sanjusangen-do',function(lng,lat,Z){
+    hall(lng,lat,22,120,0,7,Z[1],{ridgeP:4,solid:.13});
+  });
+
+  SITE('Heian Jingu',function(lng,lat,Z){
+    precinct(lng,lat,[[0,0,34,20,0],[-40,-30,16,12,0],[40,-30,16,12,0]],7,Z[1]);
+    corridor([[135.78230,35.01300],[135.78230,35.01560]],24,7,7,Z[1],{rail:3,ribs:26,ribZ:Z[1]});  /* the great torii approach */
+  });
+
+  /* Tokyo */
+  SITE('Senso-ji',function(lng,lat,Z){
+    blob(lng,lat,140,44,7,Z[0],{conc:1.3});
+    precinct(lng,lat,[[0,0,34,30,0],[0,-46,14,12,0],[-30,-10,9,9,0,1.5]],7,Z[1]);
+    corridor([[139.79633,35.71100],[139.79655,35.71430]],9,4.5,7,Z[1],{rail:3,fill:.15,ribs:4.2,ribZ:Z[2]});
+  });
+
+  SITE('Meiji Jingu',function(lng,lat,Z){
+    blob(lng,lat,430,150,7,Z[0],{conc:.9,ea:1.25});             /* the forest, which is the point */
+    precinct(lng,lat,[[0,0,30,22,0],[0,-60,14,10,0]],7,Z[1]);
+  });
+
+  /* Shibuya is a junction, so it is drawn as one: five ways meeting at a point. */
+  SITE('Shibuya Crossing',function(lng,lat,Z){
+    var ax=aspect(lat),arms=[[0,120],[150,40],[110,-110],[-40,-140],[-150,-20]];
+    for(var i=0;i<arms.length;i++)
+      corridor([[lng,lat],[lng+mLat(arms[i][0])*ax,lat+mLat(arms[i][1])]],22,7,7,Z[1],{rail:4,fill:.3});
+  });
+
+  SITE('Tokyo Skytree',function(lng,lat,Z){
+    cone(lng,lat,{rings:3,spokes:6,r0:26,r1:120,n0:10,n1:24,b:7,z0:Z[1],z1:Z[2],jit:4});
+  });
+
+  /* Osaka */
+  SITE('Osaka Castle',function(lng,lat,Z){
+    cone(lng,lat,{rings:4,spokes:0,r0:90,r1:280,n0:20,n1:90,b:7,z0:Z[0],z1:Z[1],jit:6});
+    corridor([[135.52180,34.68300],[135.53030,34.68300],[135.53030,34.69140],[135.52180,34.69140]],
+             70,16,1,Z[0],{fill:0,closed:true,rail:5});
+    precinct(lng,lat,[[0,0,26,26,0,1.3]],7,Z[1]);
+  });
+
+  SITE('Dotonbori',function(lng,lat,Z){
+    blob(lng,lat,150,40,7,Z[0],{conc:1.2,ea:1.6});
+  });
+
+  /* Nara */
+  SITE('Todai-ji',function(lng,lat,Z){
+    blob(lng,lat,180,50,7,Z[0],{conc:1.2});
+    precinct(lng,lat,[[0,0,57,50,0,1,{ridgeP:4}],[0,-120,26,18,0],[-140,-60,12,12,0]],7,Z[1]);
+  });
+
+  SITE('Nara Park',function(lng,lat,Z){
+    blob(lng,lat,700,180,7,Z[0],{conc:.8,ea:1.4,eb:.85});
+  });
+}
+buildStreets();
+buildSites();
 
 /* ---- fast land test ----
    The renderer masks thousands of lattice candidates per frame, so testing every
@@ -1309,7 +1678,7 @@ function readTheme(){
 /* Ink laid on paper: the coast is a loaded brush, open country a dry one.
    Cities have to out-weigh the countryside by a clear margin or they dissolve
    into the texture — hence the gap between land and urban-core. */
-var ALPHA=[.38,.92,.72,.66,.97,.92,.62,.98];
+var ALPHA=[.38,.92,.72,.66,.97,.92,.76,.98];
 var SIZE=[.8,1.1,1.0,1.05,1.45,1.15,.95,1.25];
 /* Dots grow with zoom so the cloud keeps its ink weight instead of dissolving into
    isolated specks. That is right for ground texture and wrong for anything drawn:
