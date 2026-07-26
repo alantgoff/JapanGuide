@@ -131,6 +131,11 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 /* The portrait is ink on the paper, not a picture pasted over it — no border, no
    background, the washi shows through the gaps. */
 #detail .por{width:100%;height:auto;display:block}
+/* Stepping through a city is the way the drawings are meant to be met, so the control
+   sits with the actions rather than hidden behind a shortcut. */
+#detail .tour{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#detail .tour button{min-width:34px;padding:6px 0;font-size:15px;line-height:1}
+#detail .tour span{font-size:10.5px;color:var(--ink-faint);letter-spacing:.04em}
 #detail h2{margin:0;font-family:var(--f-disp);font-size:24px;line-height:1.14;letter-spacing:.01em;
   font-weight:400;text-wrap:balance;padding-right:26px}
 #detail h2.mine{color:var(--shu)}
@@ -908,7 +913,18 @@ function SITE(name,fn){
   if(!c){AUTHORED.push({name:name,missing:true});return}
   var i0=NPTS;
   fn(c[0],c[1],Z_SITE);
-  AUTHORED.push({name:name,lng:c[0],lat:c[1],i0:i0,i1:NPTS});
+  /* Extent and tallest point, measured once here. The 90th percentile radius rather
+     than the maximum, because a tier-0 presence blob is several hundred metres across
+     and would frame every temple on its halo. */
+  var ax=Math.cos(c[1]*D2R)*111320,ds=[],h=0,i;
+  for(i=i0;i<NPTS;i++){
+    var e=(PX[i]-c[0])*ax, n=(myInv(PY[i])-c[1])*110574;
+    ds.push(Math.sqrt(e*e+n*n));
+    var m=PH[i]*110574*Math.cos(c[1]*D2R);if(m>h)h=m;
+  }
+  ds.sort(function(a,b){return a-b});
+  AUTHORED.push({name:name,lng:c[0],lat:c[1],i0:i0,i1:NPTS,
+                 r:ds.length?ds[Math.floor(ds.length*.9)]:0, h:h});
 }
 
 function buildCloud(){
@@ -2562,18 +2578,53 @@ window.addEventListener('keydown',function(e){
   else if(k==='ArrowDown'){V.cy-=pan;invalidate()}
   else if(k==='='||k==='+'){zoomAt(W/2,H/2,1.5)}
   else if(k==='-'||k==='_'){zoomAt(W/2,H/2,1/1.5)}
+  else if(k==='['||k===','){tourGo(-1)}
+  else if(k===']'||k==='.'){tourGo(1)}
   else if(k==='Escape'){if(placing)endPlacing();else if(fopen)closeForm();else closeDetail()}
   else return;
   e.preventDefault();killHint();
 });
 
 /* ---- selection & detail ---- */
+
+/* The scale a place is worth looking at. Both numbers come from the geometry, so a
+   4.5m alley and a 700m park each get the zoom they actually need instead of sharing
+   one compromise: fit the drawing into the frame, and if the tallest thing on it
+   would still be a couple of pixels, come in further — but never so far that the
+   drawing stops fitting. */
+function revealScale(p){
+  var a=PORSITE[p.name];
+  if(!a||!a.r)return 26000;                    /* no authored form: district zoom */
+  var fit=Math.min(W,H)*.62*91187/(2*Math.max(18,a.r));
+  var lift=a.h>1?7*90578/a.h:0;
+  return Math.max(9000,Math.min(MAXS,Math.max(fit,Math.min(lift,fit*2))));
+}
+
+/* Everything in the region you are looking at, iconic first, so stepping through it
+   is a tour rather than a list. Respects the category filters — if you have turned
+   restaurants off, the tour does not walk you through them. */
+function tourList(){
+  var reg=(sel&&byId[sel])?byId[sel].region:activeRegion;
+  var out=P.filter(function(q){
+    return filters[q.cat]!==false && (reg==='route'||reg==='all'||q.region===reg);
+  });
+  out.sort(function(a,b){return (a.rank-b.rank)||(a.id<b.id?-1:1)});
+  return out;
+}
+function tourGo(dir){
+  var L=tourList();if(!L.length)return;
+  var i=0;
+  if(sel){for(var k=0;k<L.length;k++)if(L[k].id===sel){i=k+dir;break}}
+  i=(i%L.length+L.length)%L.length;
+  select(L[i].id,true);
+}
+
 function select(id,fly){
   var p=byId[id];if(!p)return;
   sel=id;needOver=true;
   if(fopen)closeForm();
-  /* Land where the streets around it are legible, not merely where the mark is. */
-  if(fly){var minS=Math.max(V.s,9000);flyTo({cx:p.x,cy:p.y,s:minS},700)}
+  /* Land where the drawing reads, not merely where the mark is. */
+  if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p)},700);
   renderDetail(p);
   setRegionChip(p.region);
 }
@@ -2726,6 +2777,15 @@ function renderDetail(p){
       '<button id="addbtn" class="'+(inTrip?'in':'')+'">'+(inTrip?'✓ In trip':'Add to trip')+'</button>'+
       '<button id="cenbtn" class="ghost">Centre</button>'+
     '</div>'+
+    (function(){
+      var L=tourList(),n=-1;
+      for(var k=0;k<L.length;k++)if(L[k].id===p.id){n=k;break}
+      if(L.length<2)return '';
+      return '<div class="tour">'+
+        '<button id="tprev" class="ghost" aria-label="Previous place">‹</button>'+
+        '<span class="mono">'+(n+1)+' / '+L.length+' · '+esc(regionName(p.region))+'</span>'+
+        '<button id="tnext" class="ghost" aria-label="Next place">›</button></div>';
+    })()+
     (p.mine?'<div class="acts"><button id="editbtn" class="ghost">Edit</button>'+
             '<button id="movebtn" class="ghost">Move</button></div>':'')+
     '</div>'+
@@ -2738,7 +2798,10 @@ function renderDetail(p){
   el.innerHTML=h;el.classList.add('open');
   el.querySelector('#close').onclick=closeDetail;
   el.querySelector('#addbtn').onclick=function(){toggleTrip(p.id);renderDetail(p)};
-  el.querySelector('#cenbtn').onclick=function(){flyTo({cx:p.x,cy:p.y,s:Math.max(V.s,3200)},600)};
+  el.querySelector('#cenbtn').onclick=function(){flyTo({cx:p.x,cy:p.y,s:revealScale(p)},600)};
+  var tp=el.querySelector('#tprev'),tn=el.querySelector('#tnext');
+  if(tp)tp.onclick=function(){tourGo(-1)};
+  if(tn)tn.onclick=function(){tourGo(1)};
   if(p.mine){
     el.querySelector('#editbtn').onclick=function(){openForm(p.src)};
     el.querySelector('#movebtn').onclick=function(){startPlacing({move:p.src})};
