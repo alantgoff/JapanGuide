@@ -4,9 +4,13 @@
 
 A stylised point-cloud map of Japan for planning a trip — and for handing to friends who are about to go.
 
-Sumi ink on washi paper. The country is drawn as a field of ink dots, denser where the cities are; Mount Fuji is a radial cone of points, Lake Biwa is a hole in the cloud. Vermilion marks are personal recommendations, and the whole guide travels in a single link.
+Sumi ink on washi paper. The country is drawn as a field of ink dots, denser where the cities are; the Shinkansen lines thread between them, Mount Fuji is a radial cone of points, and Lake Biwa is a hole in the cloud. Vermilion marks are personal recommendations, and the whole guide travels in a single link.
 
-**One file, no dependencies, no build step, no backend.** Open `index.html` in a browser.
+**One file, no build step, no backend, nothing fetched at runtime.** Open `index.html` in a browser.
+
+## Credits
+
+The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `paper-texture` fragment shader (Apache-2.0), bundled and inlined — fibre, crumple and speckle rendered in WebGL2 and multiplied over the paper colour. It mounts static, so it draws once and costs nothing after. Where WebGL2 is unavailable it falls back to a generated noise tile, and the page reads correctly with neither.
 
 ---
 
