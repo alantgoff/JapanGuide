@@ -27,7 +27,7 @@ Streets and terrain are [地理院タイル](https://maps.gsi.go.jp/development/
 | **Search** | Takes what you'd actually type: `asakusa`, `golden pavilion`, `deer`, `glico`, `black eggs`, `東大寺`. Whole-word matches rank first, so `uji` finds Byōdō-in rather than every Fuji. |
 | **Jump** | Region buttons fly between Tokyo, Fuji & Hakone, Kyoto, Nara, Osaka, and the whole country. |
 | **Choose the ground** | *Ink* is the drawn map alone. *Terrain* puts hillshade under it — useful for Hakone and the hills behind Kyoto. *Streets* adds the survey, and is what makes the city zoom usable. 名 turns the Japanese names on the base on and off. |
-| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Reorder with ↑ ↓, split into days with 日, and each stop shows how long the walk from the one above it takes. Saved in the browser. |
+| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Reorder with ↑ ↓, split into days with 日, and each stop shows how long the walk from the one above it takes. Press a day's heading to frame that day on the map — the quickest way to see whether it hangs together or has you crossing the city twice. Saved in the browser. |
 
 ## Adding your own places
 

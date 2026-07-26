@@ -1380,7 +1380,8 @@ var layerMode='streets',jaLabels=true,blankForced=false;
    spend the whole allowance before the street pass asks for anything, so streets —
    the layer you actually zoomed in for — would arrive a full round late on every
    new view. */
-var TC=new Map(),TILE_CAP=384,TILE_INFLIGHT=8,inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
+var TC=new Map(),TILE_CAP=384,TILE_INFLIGHT=8,TILE_RETRIES=1,TILE_RETRY_MS=5000;
+var inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
 
 /* The ink treatment, in one place, because it is the whole of how this looks and
    it is the thing you will want to nudge after seeing it on real tiles.
@@ -1428,13 +1429,32 @@ function getTile(src,z,x,y,want){
     var it=TC.entries(),c;
     while(!(c=it.next()).done)if(c.value[1].st!=='load'){TC.delete(c.value[0]);break}
   }
-  e={img:new Image(),st:'load'};TC.set(k,e);inflight[src]=(inflight[src]|0)+1;
+  e={img:null,st:'load',n:0};TC.set(k,e);
+  fetchTile(src,z,x,y,k,e);
+  return e;
+}
+
+/* Kept apart from getTile so a retry can reuse the same cache entry, which is what
+   carries the attempt count. One retry, on a delay: a blink of bad network would
+   otherwise leave a permanent hole in the sheet until you happened to pan away and
+   back, and unlimited retries against a host that is genuinely gone is the other
+   way to get this wrong. */
+function fetchTile(src,z,x,y,k,e){
+  e.st='load';inflight[src]=(inflight[src]|0)+1;
+  var img=new Image();e.img=img;
   /* No crossOrigin: we never read these pixels back, and asking for CORS would
      only add a way for the request to fail. */
-  e.img.onload =function(){e.st='ok' ;inflight[src]--;tilesArrived=true};
-  e.img.onerror=function(){e.st='err';inflight[src]--;tilesArrived=true}; /* never retried */
-  e.img.src=TSRC[src].url.replace('{z}',z).replace('{x}',x).replace('{y}',y);
-  return e;
+  img.onload=function(){e.st='ok';inflight[src]--;tilesArrived=true};
+  img.onerror=function(){
+    e.st='err';inflight[src]--;tilesArrived=true;
+    if(e.n>=TILE_RETRIES)return;
+    e.n++;
+    setTimeout(function(){
+      if(TC.get(k)!==e||e.st!=='err')return;   /* evicted or already recovered */
+      fetchTile(src,z,x,y,k,e);invalidate();
+    },TILE_RETRY_MS);
+  };
+  img.src=TSRC[src].url.replace('{z}',z).replace('{x}',x).replace('{y}',y);
 }
 
 /* The zoom to ask for. Deliberately *not* scaled by devicePixelRatio: GSI serves
