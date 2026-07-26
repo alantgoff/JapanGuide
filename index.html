@@ -132,6 +132,9 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   text-decoration:none;font-size:9.5px;letter-spacing:.04em}
 #layers .lsrc:hover{color:var(--ink-dim)}
 #layers .lsrc[hidden]{display:none}
+/* Falling back to the drawn map looks exactly like the streets never having
+   worked. Say which it is. */
+#layers .lwarn{color:var(--shu);opacity:.85}
 
 /* ---- zoom ---- */
 #nav{bottom:20px;right:20px;display:flex;flex-direction:column;overflow:hidden}
@@ -400,6 +403,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   <div class="lrow" role="group" aria-label="Base map"></div>
   <a class="lsrc mono" id="rdsrc" href="https://maps.gsi.go.jp/development/ichiran.html"
      target="_blank" rel="noopener">出典：国土地理院</a>
+  <span class="lsrc lwarn mono" id="rdwarn" hidden>Survey unreachable — showing the drawn map</span>
 </div>
 
 <div class="panel" id="nav">
@@ -1374,7 +1378,7 @@ var TSRC={
    900 to 3000; the ink has to be substantially gone by the time they are fully up,
    or the last of the cloud reads as grit scattered over live streets rather than
    as a drawing handing over. It lags the rise, then finishes just after it. */
-var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1200,INK_OUT_1=3600;
+var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1200,INK_OUT_1=3600,GEO_OUT_0=1500,GEO_OUT_1=4200;
 var layerMode='streets',jaLabels=true,blankForced=false;
 /* The budget is per layer, not shared. Terrain is drawn first and would otherwise
    spend the whole allowance before the street pass asks for anything, so streets —
@@ -1419,6 +1423,15 @@ function tileFade(){return layerMode==='ink'?0:smoothstep(TILE_IN,TILE_FULL,V.s)
    whole of what that setting offers. And offline this is 0, so a failed fetch
    leaves the map exactly as it always was rather than as blank paper. */
 function inkFade(){return streetDrew?smoothstep(INK_OUT_0,INK_OUT_1,V.s):0}
+/* The drawn features are geometric claims, and at street scale the survey beneath
+   contradicts every one of them: the coastline is hand-authored at a median 35km
+   between vertices, the ridges are twelve freehand spines, and Fuji is a synthetic
+   cone rather than the mountain. At country scale that is the charm of the thing.
+   At 221 pixels to the kilometre it is just a second, wrong coastline argued over
+   the real one — so the drawing stands aside for the survey instead. It trails the
+   generated fill slightly, so the handover grades rather than cuts. Terrain mode
+   keeps everything: hillshade makes no claim about where the shore is. */
+function geoFade(){return streetDrew?smoothstep(GEO_OUT_0,GEO_OUT_1,V.s):0}
 
 function getTile(src,z,x,y,want){
   var k=src+'/'+z+'/'+x+'/'+y,e=TC.get(k);
@@ -1433,6 +1446,20 @@ function getTile(src,z,x,y,want){
   fetchTile(src,z,x,y,k,e);
   return e;
 }
+/* Silence is the one failure mode a reader cannot diagnose: a blocked or missing
+   survey renders as the old drawn map, which is indistinguishable from the streets
+   never having been built. Count outright failures and say so once they are the
+   whole story. */
+var tileFails=0,warnState=false;
+function noteTiles(){
+  var want=layerMode!=='ink'&&tileFade()>.5;
+  var lost=want&&tileFails>=4&&tilesDrew===0;
+  if(lost!==warnState){
+    warnState=lost;
+    var w=document.getElementById('rdwarn');if(w)w.hidden=!lost;
+    var s=document.getElementById('rdsrc');if(s)s.hidden=layerMode==='ink'||lost;
+  }
+}
 
 /* Kept apart from getTile so a retry can reuse the same cache entry, which is what
    carries the attempt count. One retry, on a delay: a blink of bad network would
@@ -1446,7 +1473,7 @@ function fetchTile(src,z,x,y,k,e){
      only add a way for the request to fail. */
   img.onload=function(){e.st='ok';inflight[src]--;tilesArrived=true};
   img.onerror=function(){
-    e.st='err';inflight[src]--;tilesArrived=true;
+    e.st='err';inflight[src]--;tileFails++;tilesArrived=true;
     if(e.n>=TILE_RETRIES)return;
     e.n++;
     setTimeout(function(){
@@ -1526,7 +1553,7 @@ function drawLayer(src,z,alpha,filter){
 
 function drawTiles(){
   tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;
-  var f=tileFade();if(f<=.002)return;
+  var f=tileFade();if(f<=.002){noteTiles();return}
   var z=pickZ(),d=0;
   d+=drawLayer('hill',z,(FILT?INK.hillA:INK.flatHillA)*f,INK.hillF);
   if(layerMode==='streets'){
@@ -1538,7 +1565,7 @@ function drawTiles(){
     streetDrew=drawLayer(ssrc,z,(FILT?INK.streetA:INK.flatStreetA)*f,INK.streetF);
     d+=streetDrew;
   }
-  tilesDrew=d;
+  tilesDrew=d;noteTiles();
   /* A large screen can want more tiles for one view than a fixed cache would hold,
      which turns every pan into a re-fetch of ground already seen. Size the cache to
      the view instead, with a couple of screens of history either side of it. */
@@ -1664,14 +1691,15 @@ function renderBase(){
     }
   }
   var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2;
-  /* Ground, city and city-core are the generated body of the cloud: once real
-     streets are under them they are noise, so they go. Coast, ridge and Fuji are
-     drawn features and stay at full weight — the bay, the rivers and the hills
-     over live streets are the whole point, and they keep the hand in the drawing. */
-  var KEEP=[0,1,1,0,0,1];
+  /* Ground, city and city-core are the generated body of the cloud and go first;
+     coast, ridge and Fuji are drawn geography and follow just behind. Both end up
+     gone, because what carries this from here is the paper, the ink the survey is
+     printed in, the typography and the vermilion — not a coastline that is wrong
+     by kilometres. */
+  var geo=geoFade(),FILL=[1,0,0,1,1,0];
   for(var k=0;k<6;k++){
     var cnt=bufN[k];if(!cnt)continue;
-    var a=ALPHA[k]*(KEEP[k]?1:1-.85*ink);
+    var a=ALPHA[k]*(1-(FILL[k]?ink:geo));
     if(a<=.01)continue;
     bx.globalAlpha=a;bx.fillStyle=COL.pts[k];
     var sz=Math.max(1,Math.round(SIZE[k]*zf)),arr=buf[k];
@@ -2388,7 +2416,7 @@ function syncLayers(){
       ? 'Names are off, but GSI publishes no label-free survey this close — the labelled sheet is standing in. Zoom out and they go again.'
       : 'Japanese place names on the base map. Off uses GSI’s label-free survey, which stops at z14.';
   });
-  document.getElementById('rdsrc').hidden=layerMode==='ink';
+  document.getElementById('rdsrc').hidden=layerMode==='ink'||warnState;
 }
 (function buildLayers(){
   var wrap=document.querySelector('#layers .lrow');
