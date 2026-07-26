@@ -222,8 +222,11 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #trip .hd .n{font-family:var(--f-mono);font-size:9.5px;color:var(--ink-faint)}
 #triplist{overflow-y:auto;padding:7px 0;flex:1;min-height:0}
 #trip .empty{padding:13px 16px 15px;font-size:11.5px;line-height:1.62;color:var(--ink-faint);margin:0}
-.tgroup{padding:9px 16px 3px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.tgroup{padding:9px 16px 3px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  width:100%;text-align:left}
 .tgroup .dsum{font-size:9px;color:var(--ink-faint);white-space:nowrap}
+.tgroup:hover .eyebrow{color:var(--ink)}
+.tgroup:hover .dsum{color:var(--ink-dim)}
 .titem{display:flex;align-items:center;padding:0 10px 0 16px;width:100%;font-size:12px}
 .titem:hover{background:var(--shu-wash)}
 .tsel{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;padding:6px 0;font-size:12px}
@@ -1367,7 +1370,11 @@ var TSRC={
   blank:{url:'https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png',       min:5,max:14},
   hill :{url:'https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png',min:2,max:16}
 };
-var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1400,INK_OUT_1=5200;
+/* The two curves are one crossfade and have to be read together. Tiles rise from
+   900 to 3000; the ink has to be substantially gone by the time they are fully up,
+   or the last of the cloud reads as grit scattered over live streets rather than
+   as a drawing handing over. It lags the rise, then finishes just after it. */
+var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1200,INK_OUT_1=3600;
 var layerMode='streets',jaLabels=true,blankForced=false;
 /* The budget is per layer, not shared. Terrain is drawn first and would otherwise
    spend the whole allowance before the street pass asks for anything, so streets —
@@ -2239,10 +2246,14 @@ function renderTrip(){
     for(k=1;k<stops.length;k++)
       if(haversine(stops[k-1].p,stops[k].p)<=WALK_MAX)mins+=walkMin(stops[k-1].p,stops[k].p);
     var rg=domRegion(stops.map(function(s){return s.p}));
-    h+='<div class="tgroup"><span class="eyebrow">Day '+(di+1)+
+    /* The heading is the handle for the day: press it and the map frames exactly
+       that day's ground, which is the question you are actually asking when you
+       look at a day — does this hang together, or am I crossing the city twice. */
+    h+='<button class="tgroup" type="button" data-fit="'+di+'" title="Frame this day on the map">'+
+       '<span class="eyebrow">Day '+(di+1)+
        (rg?' <span class="ja">'+esc(rg.ja)+'</span>':'')+'</span>'+
        '<span class="dsum mono">'+stops.length+' stop'+(stops.length===1?'':'s')+
-       (mins>=1?' · '+Math.round(mins)+' min walk':'')+'</span></div>';
+       (mins>=1?' · '+Math.round(mins)+' min walk':'')+'</span></button>';
 
     stops.forEach(function(st,k){
       var ti=st.i,p=st.p,id=trip[ti];
@@ -2280,6 +2291,26 @@ function renderTrip(){
   Array.prototype.forEach.call(list.querySelectorAll('[data-x]'),function(b){
     b.onclick=function(){toggleTrip(b.dataset.x);after()};
   });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-fit]'),function(b){
+    b.onclick=function(){fitDay(+b.dataset.fit)};
+  });
+}
+function fitDay(di){
+  var idxs=tripDays()[di];if(!idxs)return;
+  var w=1e9,s=1e9,e=-1e9,n=-1e9,any=false;
+  for(var k=0;k<idxs.length;k++){
+    var p=byId[trip[idxs[k]]];if(!p)continue;
+    any=true;
+    if(p.lng<w)w=p.lng;if(p.lng>e)e=p.lng;
+    if(p.lat<s)s=p.lat;if(p.lat>n)n=p.lat;
+  }
+  if(!any)return;
+  /* A day with one stop, or several on the same corner, has no extent to fit —
+     give it a few hundred metres of context rather than a division by nothing. */
+  var minD=.004,cx2,cy2;
+  if(e-w<minD){cx2=(w+e)/2;w=cx2-minD/2;e=cx2+minD/2}
+  if(n-s<minD){cy2=(s+n)/2;s=cy2-minD/2;n=cy2+minD/2}
+  flyTo(fit([w,s,e,n],.34),760);killHint();
 }
 document.getElementById('tripclear').onclick=function(){trip=[];dayBreaks=[];saveTrip();renderTrip();needOver=true;if(sel&&byId[sel])renderDetail(byId[sel])};
 document.getElementById('tripclose').onclick=function(){document.getElementById('trip').classList.remove('open')};
