@@ -716,8 +716,11 @@ function blob(lng,lat,rM,n,b,z,o){
     push(blng,blat,b,bz,0);
     /* Scatter lifted to random heights is just thicker scatter. What reads as trees
        is the stem — a short column under each one. At Arashiyama that column is the
-       entire place. */
-    if(o.h){
+       entire place.
+       Only some of them get one. Give every tree a stem and a wood at district zoom
+       becomes a field of tick marks; give a third of them one and it reads as a mass
+       with trunks showing through, which is what a wood looks like from an angle. */
+    if(o.h&&hrnd()<(o.stem||.34)){
       var tht=o.h*(.78+.44*hrnd()),zg=Math.max(bz,o.hz||zLift(tht)),st=Math.max(2,Math.round(tht/3.5));
       for(var q=1;q<=st;q++)push(blng,blat,b,zg,tht*q/st);
     }
@@ -1119,7 +1122,7 @@ function buildSites(){
   });
 
   SITE('Arashiyama Bamboo Grove',function(lng,lat,Z){
-    blob(lng,lat,190,120,7,Z[0],{conc:.85,ea:.8,eb:1.25,h:20,hz:Z[2]});
+    blob(lng,lat,190,260,7,Z[0],{conc:.85,ea:.8,eb:1.25,h:20,hz:Z[2],stem:.9});
     corridor([[135.67080,35.01560],[135.67180,35.01720],[135.67240,35.01860]],6,4,7,Z[1],{rail:2,ribs:9,ribZ:Z[2]});
   });
 
@@ -1164,7 +1167,7 @@ function buildSites(){
   });
 
   SITE('Meiji Jingu',function(lng,lat,Z){
-    blob(lng,lat,430,150,7,Z[0],{conc:.9,ea:1.25,h:22,hz:Z[2]});             /* the forest, which is the point */
+    blob(lng,lat,430,380,7,Z[0],{conc:.9,ea:1.25,h:22,hz:Z[2]});             /* the forest, which is the point */
     precinct(lng,lat,[[0,0,30,22,0,1,{h:11,roof:16}],[0,-60,14,10,0,1,{h:9,roof:12}]],7,Z[1]);
   });
 
@@ -1210,7 +1213,7 @@ function buildSites(){
   });
 
   SITE('Nara Park',function(lng,lat,Z){
-    blob(lng,lat,700,180,7,Z[0],{conc:.8,ea:1.4,eb:.85,h:12,hz:Z[2]});
+    blob(lng,lat,700,460,7,Z[0],{conc:.8,ea:1.4,eb:.85,h:12,hz:Z[2]});
   });
 }
 buildStreets();
@@ -1347,11 +1350,11 @@ var ARCH=[
   ['Tsutenkaku & Shinsekai',     tower, {h:103,base:26,deck:9,deckAt:.82,r:120}],
   ['Umeda Sky Building',         tower, {h:173,base:52,deck:26,deckAt:.94,r:110}],
   ['Tokyo Skytree',              null,  null],      /* already hand-authored */
-  ['Shinjuku Gyoen',             grove, {r:420,n:110,h:18,ea:1.2}],
-  ['Ueno Park',                  grove, {r:420,n:110,h:19,eb:1.3}],
-  ['Imperial Palace East Gardens',grove,{r:330,n:90,h:14}],
-  ['Oshino Hakkai',              grove, {r:180,n:44,h:11,conc:1.2}],
-  ['Owakudani',                  grove, {r:260,n:52,h:7,conc:1.5}],
+  ['Shinjuku Gyoen',             grove, {r:420,n:300,h:18,ea:1.2}],
+  ['Ueno Park',                  grove, {r:420,n:300,h:19,eb:1.3}],
+  ['Imperial Palace East Gardens',grove,{r:330,n:240,h:14}],
+  ['Oshino Hakkai',              grove, {r:180,n:120,h:11,conc:1.2}],
+  ['Owakudani',                  grove, {r:260,n:150,h:7,conc:1.5}],
   /* The Fuji lakes are already drawn, as real polygons in LAKES walked into the
      cloud at load. An ellipse laid over one is a worse copy of something the map
      already has right, so these two keep the surroundings portrait — which shows
@@ -1362,7 +1365,10 @@ var ARCH=[
   ['Tokyo National Museum',      temple,{w:60,d:26,rot:0,h:16,r:180,
                                          halls:[[-58,-20,22,18,0],[58,-20,22,18,0]]}],
   ['teamLab Planets',            temple,{w:34,d:26,rot:0,h:9,r:90,n:16}],
-  ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14}]
+  ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14}],
+  /* The one place the surroundings portrait had nothing to draw: an island a
+     kilometre offshore with nothing else authored near it. */
+  ['Enoshima',                   shrine,{w:18,d:12,rot:340,h:9,app:210,torii:16,toriiH:8,r:190,n:40}]
 ];
 for(var ai=0;ai<ARCH.length;ai++)(function(a){
   if(!a[1])return;
