@@ -331,7 +331,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 <div id="stage">
   <div id="paper" aria-hidden="true"></div>
   <canvas id="base"></canvas>
-  <canvas id="over" role="img" aria-label="A point-cloud map of Japan, with streets and terrain once you zoom into a city. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
+  <canvas id="over" role="img" aria-label="A point-cloud map of Japan. Zoom into a city and the same dots resolve into its streets, temple precincts and alleys. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
 </div>
 <div id="grain" aria-hidden="true"></div>
 <div id="vig" aria-hidden="true"></div>
@@ -884,7 +884,7 @@ buildCloud();
    culling index. The anonymous fabric between them is not authored at all — a real
    Heian grid over central Kyoto at 8m dot pitch would be more points than the entire
    rest of this map, for something nobody will ever look at individually. The ground
-   lattice snaps onto it instead (see GRIDS in renderBase), which costs no bytes.
+   lattice snaps onto it instead (see GRID_SNAP_IN in renderBase), which costs no bytes.
    [w,s,e,n, originLng,originLat, blockLng, blockLat, strength] */
 var GRIDS=[
   [135.7300,34.9790,135.7860,35.0400, 135.75935,34.98950, .001316,.001085, 1],   /* Kyoto: the 120m cho, cardinal */
@@ -1069,6 +1069,7 @@ function buildSites(){
 
   SITE('Dotonbori',function(lng,lat,Z){
     blob(lng,lat,150,40,7,Z[0],{conc:1.2,ea:1.6});
+    corridor([[135.49700,34.66950],[135.50900,34.66940]],9,5,7,Z[1],{rail:2.2,fill:.2,ribs:7,ribZ:Z[2]});
   });
 
   /* Nara */
@@ -1717,6 +1718,8 @@ function smoothstep(a,b,x){var t=(x-a)/(b-a);if(t<0)t=0;else if(t>1)t=1;return t
 
    Everything else has a floor. See the fill budget in renderBase for the rest. */
 var GRID_OUT_0=1200,GRID_OUT_1=3600;
+/* below this the blocks are smaller than the dot spacing and the snap does nothing */
+var GRID_SNAP_IN=9000;
 function gridFade(){return 1-smoothstep(GRID_OUT_0,GRID_OUT_1,V.s)}
 /* Dim the generated ground a little as the drawing takes over, so it seats behind
    without greying the sheet. The count and the urban flattening do the real work —
@@ -1830,6 +1833,23 @@ function renderBase(){
         var lx=gx+(h2(qgx,qgy)-.5)*jit, ly=gy+(h2(qgy+1,qgx+1)-.5)*jit;
         var la=myInv(ly);
         if(!landFast(lx,la))continue;
+        /* Snap onto the street lattice. Kyoto really is a grid, so this is accurate
+           rather than a cheat — and it is the reason the grid is not stored: at 8m
+           dot pitch the central cho lattice alone would outweigh the rest of this
+           map, for something nobody ever looks at one block of. Snapping one axis
+           and leaving the other free strings dots out *along* streets; snapping both
+           would produce a lattice of intersections and nothing between them. */
+        if(s>GRID_SNAP_IN){
+          for(var gi=0;gi<GRIDS.length;gi++){
+            var G=GRIDS[gi];
+            if(lx<G[0]||lx>G[2]||la<G[1]||la>G[3])continue;
+            if(h2(qgx+31,qgy+17)<G[8]){
+              if(h2(qgx+3,qgy+29)<.5)lx=G[4]+Math.round((lx-G[4])/G[6])*G[6];
+              else{la=G[5]+Math.round((la-G[5])/G[7])*G[7];ly=my(la)}
+            }
+            break;
+          }
+        }
         /* built-up weight, so a city reads as a bright basin and the hills stay dim */
         var wgt=0;
         for(var uk=0;uk<nearU.length;uk++){

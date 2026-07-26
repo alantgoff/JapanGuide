@@ -6,15 +6,13 @@ A stylised point-cloud map of Japan for planning a trip — and for handing to f
 
 Sumi ink on washi paper. The country is drawn as a field of ink dots, denser where the cities are; the Shinkansen lines thread between them, Mount Fuji is a radial cone of points, and Lake Biwa is a hole in the cloud. Vermilion marks are personal recommendations, and the whole guide travels in a single link.
 
-**One file, no build step, no backend.** Open `index.html` in a browser.
+**One file, no build step, no backend, nothing fetched at runtime.** Open `index.html` in a browser.
 
-Zoom into a city and the ground becomes a real survey — streets and hillshade, so you can see which side of the station a place is on and how far it is on foot. That part is fetched; everything else is in the file. The opening view fetches nothing, the *Ink* setting fetches nothing ever, and with no network at all the drawn map is exactly what it always was.
+Zoom into a city and the same dots carry on being the map. Pontocho resolves into two frontages four and a half metres apart, Kiyomizu-dera into a deck cantilevered off a hillside on a lattice of stilts, Fushimi Inari into a ladder of torii climbing its ridge. Nothing switches over to a different kind of map when you get close — the drawing just says more.
 
 ## Credits
 
 The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `paper-texture` fragment shader (Apache-2.0), bundled and inlined — fibre, crumple and speckle rendered in WebGL2 and multiplied over the paper colour. It mounts static, so it draws once and costs nothing after. Where WebGL2 is unavailable it falls back to a generated noise tile, and the page reads correctly with neither.
-
-Streets and terrain are [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html) — 出典：国土地理院 — from the Geospatial Information Authority of Japan. Free, no key, no account. They are desaturated, multiplied into the paper and tinted toward sumi, so they print into the drawing rather than sitting on top of it.
 
 ---
 
@@ -26,7 +24,7 @@ Streets and terrain are [地理院タイル](https://maps.gsi.go.jp/development/
 | **Read a place** | Click any mark for what it is, why it's worth going, and a practical note — opening hours, the hour that beats the crowds, whether it's cash-only. |
 | **Search** | Takes what you'd actually type: `asakusa`, `golden pavilion`, `deer`, `glico`, `black eggs`, `東大寺`. Whole-word matches rank first, so `uji` finds Byōdō-in rather than every Fuji. |
 | **Jump** | Region buttons fly between Tokyo, Fuji & Hakone, Kyoto, Nara, Osaka, and the whole country. |
-| **Choose the ground** | *Ink* is the drawn map alone. *Terrain* puts hillshade under it — useful for Hakone and the hills behind Kyoto. *Streets* adds the survey, and is what makes the city zoom usable. 名 turns the Japanese names on the base on and off. |
+| **Zoom into a district** | Keep going past the city marks and the cloud resolves: the Kamo between its banks, the Heian grid of blocks, Nishiki's five blocks of stalls, the moat around Nijō, the torii climbing Fushimi. Twenty places are drawn as their own shape rather than as a dot. |
 | **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Reorder with ↑ ↓, split into days with 日, and each stop shows how long the walk from the one above it takes. Press a day's heading to frame that day on the map — the quickest way to see whether it hangs together or has you crossing the city twice. Saved in the browser. |
 
 ## Adding your own places
@@ -59,17 +57,16 @@ Set the title, the opening note, the vertical characters and the seal character 
 
 ## Notes and caveats
 
-- **Coordinates** for the 73 built-in places were checked against Wikipedia and OpenStreetMap. **The drawn geography is deliberately coarse** — the coastline is hand-authored at a median 35km between vertices, so the silhouette is recognisable but wrong by kilometres. It carries the country; the GSI tiles carry the cities, and they fade in over each other from about z10.
-- **The drawing stands aside once the survey is under it.** At 221 pixels to the kilometre a hand-drawn coastline is not charm, it is a second and incorrect shoreline argued over the real one — so the coast, the ridges and the Fuji cone retire just behind the point cloud. From there the character is carried by the paper, the ink the survey is printed in, the typography and the vermilion. Terrain mode keeps all of it, because hillshade makes no claim about where the shore is.
-- **If the survey cannot be reached** the map falls back to the drawing and *says so* in the corner. Silent fallback is indistinguishable from the streets never having worked.
+- **Coordinates** for the built-in places were checked against Wikipedia and OpenStreetMap. **The geography is deliberately coarse at country scale** — the coastline is hand-authored at a median 33km between vertices, so the silhouette is recognisable but wrong by kilometres. It carries the shape of the country, not its shoreline.
+- **The street and site drawings are impressionistic, not surveyed.** They are authored by hand from published layouts and from knowing the places, in metres from each site's own coordinate. A lane is in the right place to within a building or two and has the right width, length and orientation; it is not traced from a survey and you should not navigate by it. What it is for is reading a district — that Pontocho is a slot and Kawaramachi is an avenue, that Kiyomizu sits above the city and Fushimi climbs away from it.
+- **Nothing is fetched, ever.** No tiles, no fonts, no analytics, no API. Open the file from a USB stick on a plane and it is complete. This is asserted in the tests rather than described, including a `file://` load with the request log required to be empty.
 - **Walking times** are straight-line distance with a 1.3 detour factor at 4.5 km/h. That is a decent planning estimate on flat ground, not a route — it does not know about the hill, the river or the level crossing. Legs over 12 km say *take the train* rather than pretending.
-- **Turning the base labels off** drops to GSI's `blank` layer, which stops at z14. Rather than stretch it into mush, the labelled sheet comes back one level past that and the 名 control marks itself to say so. `pale` runs to z18 and is the default.
-- **The ink treatment is tuned to GSI's `pale` palette**, which is much lighter than it looks — its water is luma 220 against a 242 ground. The transfer curve is solved so the ground clips to white and multiplies away while water still prints; measured end to end, buildings darken the paper 6%, parks 8%, water 14%, arterials 14%, lane casings 25%, rail 49%, lettering 62%. All of it lives in the `INK` object, which is the thing to nudge if it reads too heavy or too faint on your screen.
-- **Water and arterial roads land on the same tone**, because in greyscale they genuinely are the same luminance. Shape separates them — water is areal, roads are linear.
-- **The zoom pick ignores device pixel ratio.** GSI serves no @2x tiles, so a retina bump would mean four times the requests for sharpness this treatment throws away anyway.
+- **The zoom stops at about 0.8 metres a pixel**, which is where the finest thing the drawing says — that four-and-a-half-metre gap down Pontocho — opens up enough for the eye to read it as a gap. Past that you would only be magnifying a fixed set of dots.
+- **Kyoto's street grid between the named avenues is not stored.** A real 120m *chō* lattice over the centre would be more points than the rest of the map put together, for something nobody looks at individually. The per-frame ground fill snaps onto it instead, which costs nothing and gets the level of detail right for free.
 - **Typography** relies on Hiragino Mincho / Yu Mincho, which are present on macOS, iOS and Windows Japanese installs. Elsewhere it falls back to Georgia, which changes the character of the page.
 - **Single theme by design.** This is a printed map, not a UI — there's no dark mode.
-- Points are generated per frame rather than stored: a jittered lattice masked against the coastline, weighted by how built-up the ground is, sized to hold a constant on-screen density at every zoom. Deterministic from world position, so it holds still while you pan.
+- **The ground is generated per frame rather than stored**: a jittered lattice masked against the coastline, weighted by how built-up the land is, sized to hold a roughly constant on-screen density at every zoom. Deterministic from world position, so it holds still while you pan. As the authored streets and sites arrive it thins to about a quarter — enough that the drawing dominates, never so little that the paper goes blank.
+- **Authored geography draws from its own random stream.** Editing the site table would otherwise reshuffle every coastline point after it, which makes visual diffs useless. The coastline does not move when a temple does.
 - Renders on two stacked canvases (the cloud only redraws when the view changes) and stays comfortably inside a frame budget on a laptop.
 
 ## Serving it
