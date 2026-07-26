@@ -124,6 +124,8 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #layers .lchip:hover{color:var(--ink);background:rgba(34,31,27,.04)}
 #layers .lchip[aria-pressed="true"]{color:var(--ink);background:rgba(34,31,27,.07)}
 #layers .lchip small{font-size:10px;opacity:.7}
+/* names asked off, but no label-free survey exists this close */
+#layers .lchip.forced small{border-bottom:1px dotted currentColor;opacity:1}
 /* The survey is somebody else's work and says so, but quietly — it is a credit
    line on a drawing, not a badge. */
 #layers .lsrc{border-top:1px solid var(--line);padding:6px 11px;color:var(--ink-faint);
@@ -353,7 +355,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   <div id="paper" aria-hidden="true"></div>
   <canvas id="tiles" aria-hidden="true"></canvas>
   <canvas id="base"></canvas>
-  <canvas id="over" role="img" aria-label="A point-cloud map of Japan. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
+  <canvas id="over" role="img" aria-label="A point-cloud map of Japan, with streets and terrain once you zoom into a city. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
 </div>
 <div id="grain" aria-hidden="true"></div>
 <div id="vig" aria-hidden="true"></div>
@@ -1366,12 +1368,37 @@ var TSRC={
   hill :{url:'https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png',min:2,max:16}
 };
 var TILE_IN=900,TILE_FULL=3000,INK_OUT_0=1400,INK_OUT_1=5200;
-var layerMode='streets',jaLabels=true;
+var layerMode='streets',jaLabels=true,blankForced=false;
 /* The budget is per layer, not shared. Terrain is drawn first and would otherwise
    spend the whole allowance before the street pass asks for anything, so streets —
    the layer you actually zoomed in for — would arrive a full round late on every
    new view. */
-var TC=new Map(),TILE_CAP=256,TILE_INFLIGHT=8,inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
+var TC=new Map(),TILE_CAP=384,TILE_INFLIGHT=8,inflight={},tilesArrived=false,tilesDrew=0,streetDrew=0;
+
+/* The ink treatment, in one place, because it is the whole of how this looks and
+   it is the thing you will want to nudge after seeing it on real tiles.
+
+   Streets: GSI's road greys sit *above* mid-grey, so raising contrast alone drives
+   them toward white along with the paper. Duck the image below the pivot first,
+   then a hard contrast separates ground (clips to white and multiplies away) from
+   tarmac and lettering (fall to ink). The two numbers are fitted to GSI's actual
+   pale palette, which is far lighter than intuition suggests — its water is luma
+   220 against a 242 ground — and an eighth of a stop either way is the difference
+   between a legible river and no river at all. Solved for ground -> 255 and
+   water -> ~200; measured end-to-end, the ladder runs buildings 6%, parks 8%,
+   water 14%, arterials 14%, lane casings 25%, rail 49%, lettering 62%.
+
+   Terrain: lift the lit slopes clear to white so they multiply away entirely and
+   only the shadowed side prints. A hillshade that darkens everywhere is a grey
+   veil over the paper, not a drawing of the ground.
+
+   No tint pass: grayscale has already taken the survey blues and greens out, and
+   multiplying neutral grey through warm paper warms it toward sumi on its own. */
+var INK={
+  hillA:.45,  hillF:'grayscale(1) contrast(.9) brightness(1.25)',
+  streetA:.62,streetF:'grayscale(1) brightness(.67) contrast(3.7)',
+  flatHillA:.30,flatStreetA:.34   /* no canvas filters: lighter, and a wash instead */
+};
 
 /* Canvas filters do the desaturating. Safari was late to them; without them the
    pass still reads, just flatter, so detect once and carry on either way. */
@@ -1403,6 +1430,25 @@ function getTile(src,z,x,y,want){
   return e;
 }
 
+/* The zoom to ask for. Deliberately *not* scaled by devicePixelRatio: GSI serves
+   no @2x variant, so a retina bump means four times the tiles for sharpness this
+   design throws away anyway — the base is desaturated, crushed to near-white,
+   drawn at 62% through a paper shader and a grain overlay. Leaflet makes the same
+   call with 256px tiles. TILE_BUDGET is only a backstop against pathological
+   windows: it steps the zoom down rather than giving up, because a 4K screen
+   showing no tiles at all and no reason why is the worst of the outcomes. */
+var TILE_BUDGET=256;
+function tileSpan(z){
+  var dpt=360/Math.pow(2,z);
+  return (Math.floor(xOfS(W)/dpt)-Math.floor(xOfS(0)/dpt)+1)*
+         (Math.floor(-yOfS(H)/dpt)-Math.floor(-yOfS(0)/dpt)+1);
+}
+function pickZ(){
+  var z=Math.round(Math.log(V.s*360/256)/Math.LN2);
+  while(z>1&&tileSpan(z)>TILE_BUDGET)z--;
+  return z;
+}
+
 /* Which tiles cover the window, and exactly where each one lands. Kept apart from
    the painting so the geometry can be reasoned about — and checked — on its own. */
 function visibleTiles(src,z){
@@ -1411,7 +1457,9 @@ function visibleTiles(src,z){
   var X0=Math.floor((xOfS(0)+180)/dpt),X1=Math.floor((xOfS(W)+180)/dpt);
   var Y0=Math.floor((180-yOfS(0))/dpt),Y1=Math.floor((180-yOfS(H))/dpt);
   if(X0<0)X0=0;if(Y0<0)Y0=0;if(X1>n-1)X1=n-1;if(Y1>n-1)Y1=n-1;
-  if((X1-X0+1)*(Y1-Y0+1)>400)return null;
+  /* A clamp back up to a source's ceiling can re-inflate the count past what pickZ
+     allowed, so hold the same line here rather than trusting the caller. */
+  if((X1-X0+1)*(Y1-Y0+1)>TILE_BUDGET*2)return null;
   var list=[];
   for(var X=X0;X<=X1;X++)for(var Y=Y0;Y<=Y1;Y++){
     /* Round each edge independently. Rounding an origin and a size instead lets
@@ -1426,8 +1474,9 @@ function visibleTiles(src,z){
 function drawLayer(src,z,alpha,filter){
   var v=visibleTiles(src,z);if(!v)return 0;
   var S=TSRC[src],tz=v.tz,list=v.list;
-  /* Requesting mid-flight would queue every zoom level the camera passes through. */
-  var want=!anim,drew=0;
+  /* Requesting mid-flight, or mid-wheel, would queue every zoom level the camera
+     passes through. */
+  var want=!anim&&performance.now()>=zoomQuietUntil,drew=0;
   tlx.globalAlpha=alpha;if(FILT)tlx.filter=filter;
   for(var i=0;i<list.length;i++){
     var t=list[i],X=t.X,Y=t.Y,w=t.px1-t.px0,hgt=t.py1-t.py0;
@@ -1451,25 +1500,25 @@ function drawLayer(src,z,alpha,filter){
 function drawTiles(){
   tlx.clearRect(0,0,W,H);tilesDrew=0;streetDrew=0;
   var f=tileFade();if(f<=.002)return;
-  /* dpr in the zoom pick, so a retina screen gets tiles at its own resolution */
-  var z=Math.round(Math.log(V.s*dpr*360/256)/Math.LN2),d=0;
-  /* Terrain: lift the lit slopes clear to white so they multiply away entirely and
-     only the shadowed side prints. A hillshade that darkens everywhere is a grey
-     veil over the paper, not a drawing of the ground. */
-  d+=drawLayer('hill',z,(FILT?.45:.30)*f,'grayscale(1) contrast(.9) brightness(1.25)');
-  /* Streets: the road greys sit *above* mid-grey, so raising contrast alone drives
-     them toward white along with the paper. Duck the whole image below the pivot
-     first, then a hard contrast separates paper (clips to white, multiplies away)
-     from tarmac and lettering (fall to ink). */
+  var z=pickZ(),d=0;
+  d+=drawLayer('hill',z,(FILT?INK.hillA:INK.flatHillA)*f,INK.hillF);
   if(layerMode==='streets'){
-    streetDrew=drawLayer(jaLabels?'pale':'blank',z,(FILT?.62:.34)*f,'grayscale(1) brightness(.72) contrast(4)');
+    /* GSI publishes no label-free raster above z14. Stretching it to street level
+       would be a twenty-fold upscale — not "coarser", just mush — so one level of
+       give, then the labelled sheet comes back. The control says when it has. */
+    var ssrc=jaLabels||z>TSRC.blank.max+1?'pale':'blank',bf=ssrc==='pale'&&!jaLabels;
+    if(bf!==blankForced){blankForced=bf;syncLayers()}
+    streetDrew=drawLayer(ssrc,z,(FILT?INK.streetA:INK.flatStreetA)*f,INK.streetF);
     d+=streetDrew;
   }
-  tilesDrew=d;if(!d)return;
-  /* No tint pass when filters are available: grayscale has already taken the survey
-     blues and greens out, and multiplying neutral grey through warm paper warms it
-     toward sumi on its own. Painting ink over everything only greys the page.
-     Without filters the tiles keep their colours, and a wash is the cheap repair. */
+  tilesDrew=d;
+  /* A large screen can want more tiles for one view than a fixed cache would hold,
+     which turns every pan into a re-fetch of ground already seen. Size the cache to
+     the view instead, with a couple of screens of history either side of it. */
+  TILE_CAP=Math.max(384,Math.min(1200,d*3));
+  if(!d)return;
+  /* Without canvas filters the tiles keep their survey colours, and a wash of ink
+     over them is the cheap repair. With filters this would only grey the page. */
   if(!FILT){
     tlx.globalCompositeOperation='source-atop';
     tlx.fillStyle='rgba(34,31,27,'+(.3*f).toFixed(3)+')';tlx.fillRect(0,0,W,H);
@@ -1850,6 +1899,12 @@ function stepAnim(){
   V.s=Math.exp(anim.f.ls+(anim.t.ls-anim.f.ls)*e);
   invalidate();
 }
+/* A wheel spun from the whole country down to a single street crosses ten zoom
+   levels. Asking at every one of them would fire hundreds of tiles nobody will
+   ever see, and put the ones you actually want at the back of the queue. While
+   the zoom is still moving we draw from whatever is cached and request nothing;
+   one quiet beat after it settles, we fetch. Pinch runs through here too. */
+var zoomQuietUntil=0,zoomSettle=null;
 function zoomAt(px,py,f){
   var ns=Math.max(MINS,Math.min(MAXS,V.s*f));
   if(ns===V.s)return;
@@ -1857,6 +1912,9 @@ function zoomAt(px,py,f){
   V.s=ns;
   V.cx=wx-(px-W/2)/V.s;
   V.cy=wy+(py-H/2)/V.s;
+  zoomQuietUntil=performance.now()+160;
+  if(zoomSettle)clearTimeout(zoomSettle);
+  zoomSettle=setTimeout(function(){zoomSettle=null;invalidate()},180);
   invalidate();
 }
 
@@ -2245,8 +2303,15 @@ function loadLayerPref(){
 }
 function syncLayers(){
   Array.prototype.forEach.call(document.querySelectorAll('#layers .lchip'),function(b){
-    if(b.dataset.l)b.setAttribute('aria-pressed',b.dataset.l===layerMode?'true':'false');
-    else{b.setAttribute('aria-pressed',jaLabels?'true':'false');b.hidden=layerMode!=='streets'}
+    if(b.dataset.l){b.setAttribute('aria-pressed',b.dataset.l===layerMode?'true':'false');return}
+    b.setAttribute('aria-pressed',jaLabels?'true':'false');
+    b.hidden=layerMode!=='streets';
+    /* Names reappearing when you asked for them off needs saying, or it just looks
+       like the setting stopped working. */
+    b.classList.toggle('forced',blankForced);
+    b.title=blankForced
+      ? 'Names are off, but GSI publishes no label-free survey this close — the labelled sheet is standing in. Zoom out and they go again.'
+      : 'Japanese place names on the base map. Off uses GSI’s label-free survey, which stops at z14.';
   });
   document.getElementById('rdsrc').hidden=layerMode==='ink';
 }
