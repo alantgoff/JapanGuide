@@ -114,12 +114,18 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #scalebar{display:flex;align-items:center;gap:8px}
 #scalebar .bar{height:4px;border-left:1px solid var(--line-strong);border-right:1px solid var(--line-strong);
   border-bottom:1px solid var(--line-strong);width:56px;transition:width .12s;display:block}
-/* ---- zoom ---- */
+/* ---- zoom & tour ---- */
 #nav{bottom:20px;right:20px;display:flex;flex-direction:column;overflow:hidden}
 #nav button{width:38px;height:38px;font-size:14px;color:var(--ink-dim);border-bottom:1px solid var(--line);
   display:grid;place-items:center;transition:color .2s,background .2s;line-height:1}
 #nav button:last-child{border-bottom:0;font-family:var(--f-ja);font-size:13px}
 #nav button:hover{color:var(--ink);background:rgba(34,31,27,.05)}
+/* The tour pair leads the stack. They move the camera like the others do, so they belong
+   here — but they move it to a *place*, so a heavier rule sets them off as their own kind
+   of action. The chevrons are small glyphs; they need the extra couple of points to sit
+   at the same visual weight as ＋ and −. */
+#nav .tourbtn{font-size:19px}
+#nav #nnext{border-bottom:1px solid var(--line-strong)}
 
 /* ---- detail ---- */
 #detail{top:20px;right:20px;width:322px;max-height:calc(100vh - 40px);overflow-y:auto;padding:0;display:none;
@@ -156,8 +162,10 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #addbtn{background:var(--shu);border-color:var(--shu)!important;color:var(--panel-solid)!important}
 #addbtn:hover{filter:brightness(1.08)}
 #addbtn.in{background:transparent;border-color:var(--shu)!important;color:var(--shu)!important}
-#detail .acts button.ghost{color:var(--ink-dim)}
-#detail .acts button.ghost:hover{color:var(--ink);border-color:var(--ink)}
+/* Scoped to #detail, not to .acts — the tour row uses ghost too, and had been carrying
+   the class with nothing behind it. */
+#detail button.ghost{color:var(--ink-dim)}
+#detail button.ghost:hover{color:var(--ink);border-color:var(--ink)}
 #detail .near{border-top:1px solid var(--line);padding:16px 22px 18px}
 #detail .near .eyebrow{margin-bottom:10px;display:block}
 .nearrow{display:flex;justify-content:space-between;gap:12px;width:100%;padding:6px 0;font-size:12px;
@@ -382,6 +390,8 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 </div>
 
 <div class="panel" id="nav">
+  <button id="nprev" class="tourbtn" type="button" title="Previous place (&#91;)" aria-label="Previous place">‹</button>
+  <button id="nnext" class="tourbtn" type="button" title="Next place (&#93;)" aria-label="Next place">›</button>
   <button id="zin" title="Zoom in" aria-label="Zoom in">＋</button>
   <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
   <button id="zrst" title="Back to the Golden Route" aria-label="Back to the Golden Route">全</button>
@@ -1114,10 +1124,17 @@ function buildSites(){
   SITE('Fushimi Inari Taisha',function(lng,lat,Z){
     blob(lng,lat,120,40,7,Z[0],{conc:1.4});
     precinct(lng,lat,[[0,0,26,16,0,1,{h:12,roof:15}],[-8,-40,14,10,0,1,{h:9,roof:12}],[30,18,10,10,0,1,{h:7,roof:9}]],7,Z[1]);
-    corridor([[135.77270,34.96710],[135.77415,34.96768],[135.77530,34.96722],
-              [135.77690,34.96795],[135.77772,34.96700],[135.77905,34.96742],
-              [135.78010,34.96690]],
-             5,4.2,7,Z[1],{rail:1.6,fill:.1,ribs:3.6,ribZ:Z[2],ribH:3.6,hz:Z[2]});
+    /* One evenly-spaced corridor drew the whole climb as a single grey bar, which is
+       the one thing Fushimi is not. The Senbon Torii — the stretch just behind the
+       shrine where the gates stand shoulder to shoulder and it stops being a path and
+       becomes a tunnel — is about two hundred metres. Past that they thin out over
+       four kilometres of mountain. Two corridors, at the two pitches, and the place
+       reads: a dense black mass at the bottom and a trail fading up the hill. */
+    corridor([[135.77270,34.96710],[135.77415,34.96768],[135.77530,34.96722]],
+             3,3.4,7,Z[1],{rail:1.4,fill:.08,ribs:1.25,ribZ:Z[2],ribH:3.1,hz:Z[2]});
+    corridor([[135.77530,34.96722],[135.77690,34.96795],[135.77772,34.96700],
+              [135.77905,34.96742],[135.78010,34.96690]],
+             4,4.2,7,Z[1],{rail:1.6,fill:.1,ribs:13,ribZ:Z[2],ribH:4,hz:Z[2]});
   });
 
   /* Pontocho. Four and a half metres wide, five blocks long, and that ratio is the
@@ -1142,14 +1159,27 @@ function buildSites(){
     corridor([[135.67080,35.01560],[135.67180,35.01720],[135.67240,35.01860]],6,4,7,Z[1],{rail:2,ribs:9,ribZ:Z[2]});
   });
 
+  /* A pavilion is not a box. Both of these are storeys that step in as they rise, and
+     that taper is the entire silhouette — one 11m block over a pond was a shed. h0
+     stacks them: each storey starts where the one below stopped. */
   SITE('Kinkaku-ji',function(lng,lat,Z){
-    blob(lng+.00055,lat-.00035,95,64,1,Z[1],{hollow:.55});      /* the pond it stands in */
-    precinct(lng,lat,[[0,0,11,11,20,1.2,{h:11,roof:12.5,bays:2.6}],[62,40,9,9,20,1,{h:6,roof:8}]],7,Z[1]);
+    blob(lng+.00055,lat-.00035,95,150,1,Z[1],{hollow:.55});     /* the pond it stands in */
+    precinct(lng,lat,[[0,0,12.5,12.5,20,1.2,{h:4.6,roof:5.3,bays:2.4}],
+                      [0,0,10.5,10.5,20,1.2,{h0:4.6,h:4.2,roof:5.0,bays:2.2}],
+                      [0,0, 7.5, 7.5,20,1.4,{h0:8.8,h:3.4,roof:5.4,bays:2}],
+                      [62,40,9,9,20,1,{h:6,roof:8}]],7,Z[1]);
   });
 
   SITE('Ginkaku-ji',function(lng,lat,Z){
     blob(lng,lat,110,40,7,Z[0],{conc:1.3});
-    precinct(lng,lat,[[0,0,10,10,15,1.2,{h:7,roof:8.2}],[24,-14,16,12,15,1,{h:6,roof:8}],[-18,20,13,9,15,1,{h:5,roof:7}]],7,Z[1]);
+    precinct(lng,lat,[[0,0,10.5,10.5,15,1.2,{h:3.9,roof:4.5,bays:2.2}],
+                      [0,0, 8.4, 8.4,15,1.2,{h0:3.9,h:3.3,roof:4.7,bays:2}],
+                      [24,-14,16,12,15,1,{h:6,roof:8}],
+                      [-18,20,13,9,15,1,{h:5,roof:7}]],7,Z[1]);
+    /* The Sea of Silver Sand and the cone standing in it, which is the half of
+       Ginkaku-ji that is not a building. */
+    blob(lng-.00034,lat+.00020,24,60,7,Z[2],{conc:.6,ea:1.35});
+    precinct(lng,lat,[[-31,20,5,5,15,1.4,{h:1.8,roof:2.4,ridge:false,bays:1.6}]],7,Z[2]);
   });
 
   SITE("Philosopher's Path",function(lng,lat,Z){
@@ -1318,28 +1348,47 @@ function tower(lng,lat,Z,o){
   }
 }
 
+/* rot and stem go through because a ridge of cherries is not a round wood: Yoshino is
+   four groves strung up a slope, and which way that slope runs is most of the drawing. */
 function grove(lng,lat,Z,o){
   o=o||{};
   blob(lng,lat,o.r||300,o.n||80,7,Z[0],
-       {conc:o.conc===undefined?.9:o.conc,ea:o.ea||1,eb:o.eb||1,h:o.h||16,hz:Z[2]});
+       {conc:o.conc===undefined?.9:o.conc,ea:o.ea||1,eb:o.eb||1,rot:o.rot||0,
+        stem:o.stem,h:o.h||16,hz:Z[2]});
 }
 
+/* o.front is what turns a lane into a street: two frontages with storeys on them, so
+   the gap between reads as a section rather than as the space inside a fence. Left off,
+   the same primitive is a river with its two banks. */
 function lane(lng,lat,Z,o){
   o=o||{};
   var r=(o.rot||0)*D2R,ax=aspect(lat),L=o.len||180;
   corridor([[lng-Math.cos(r)*mLat(L*.5)*ax, lat-Math.sin(r)*mLat(L*.5)],
             [lng+Math.cos(r)*mLat(L*.5)*ax, lat+Math.sin(r)*mLat(L*.5)]],
            o.w||5,3.6,7,Z[1],{rail:1.6,fill:.14,ribs:o.ribs||5,ribZ:Z[2],
-                              ribH:o.h||5,hz:Z[2]});
+                              ribH:o.h||5,hz:Z[2],railH:o.front||0,hzRail:Z[2]});
 }
 
-/* A district whose character is that it is walled in — Akihabara, Shinsekai. */
+/* A district whose character is that it is walled in — Akihabara, Shinsekai. A quarter
+   laid out on a grid is a different claim from one that grew, so o.rot pins every block
+   to one bearing: Naramachi's machiya all face the same two streets, and scattering
+   them would say the opposite. */
 function blocks(lng,lat,Z,o){
   o=o||{};
   var n=o.n||6,rows=[],H=o.h||30;
   for(var i=0;i<n;i++){
-    var a=i/n*TAU+.4, d=(o.r||90)*(.55+.45*((i*7)%n)/n), f=.7+.6*((i*5)%n)/n;
-    rows.push([Math.cos(a)*d, Math.sin(a)*d, o.w||24, o.d||20, (i*37)%90, 1,
+    /* Reaching from the anchor outwards rather than from half-way out: a ring that
+       starts at .55r is a district with a hole punched through the middle of it, and
+       the bigger the district the bigger the hole.
+       The spread is the golden ratio rather than (i*7)%n, which is zero for every i
+       whenever n divides 7 — Odaiba and Akihabara both have seven blocks, and both
+       had been stacking all seven at one radius and one height. */
+    var gr=(i*.6180339887)%1, gh=(i*.3819660113)%1;
+    var a=i/n*TAU+.4, d=(o.r||90)*(.10+.90*gr), f=.7+.6*gh;
+    /* A few degrees of wobble even on the grid: a quarter of hand-built townhouses is
+       aligned, not machined, and perfectly parallel rectangles read as a warehouse. */
+    rows.push([Math.cos(a)*d, Math.sin(a)*d, o.w||24, o.d||20,
+               o.rot===undefined?(i*37)%90:o.rot+((i*29)%7-3), 1,
                {h:H*f, roof:H*f*1.06, bays:5}]);
   }
   precinct(lng,lat,rows,7,Z[1]);
@@ -1375,8 +1424,8 @@ var ARCH=[
      cloud at load. An ellipse laid over one is a worse copy of something the map
      already has right, so these two keep the surroundings portrait — which shows
      them the actual lake. */
-  ['Tsukiji Outer Market',       lane,  {rot:8,len:210,w:5,ribs:4.5,h:6}],
-  ['Kuromon Market',             lane,  {rot:92,len:200,w:4.5,ribs:4.5,h:6}],
+  ['Tsukiji Outer Market',       lane,  {rot:8,len:210,w:5,ribs:4.5,h:6,front:9}],
+  ['Kuromon Market',             lane,  {rot:92,len:200,w:4.5,ribs:4.5,h:6,front:8}],
   ['Akihabara',                  blocks,{r:130,n:7,w:26,d:22,h:38}],
   ['Tokyo National Museum',      temple,{w:60,d:26,rot:0,h:16,r:180,
                                          halls:[[-58,-20,22,18,0],[58,-20,22,18,0]]}],
@@ -1384,7 +1433,56 @@ var ARCH=[
   ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14}],
   /* The one place the surroundings portrait had nothing to draw: an island a
      kilometre offshore with nothing else authored near it. */
-  ['Enoshima',                   shrine,{w:18,d:12,rot:340,h:9,app:210,torii:16,toriiH:8,r:190,n:40}]
+  ['Enoshima',                   shrine,{w:18,d:12,rot:340,h:9,app:210,torii:16,toriiH:8,r:190,n:40}],
+
+  /* ---- the rest of the guide ----
+     Kyoto is a grid city and its temples sit on it, so rot stays 0 for all but the one
+     on the Higashiyama slope. Where a plan is the whole point of a place — Shitenno-ji's
+     pagoda standing on the axis in front of the kondo rather than off to one side, the
+     way every other temple here has it — it is stated as halls instead of taken from
+     the archetype's default. */
+  ['Zojo-ji',                    temple,{w:32,d:26,rot:0,h:15,r:180}],
+  ['Shitenno-ji',                temple,{w:26,d:20,rot:0,h:13,r:190,
+                                         halls:[[0,-26,11,11,0,1.3,{h:44,roof:50,bays:2.4}]]}],
+  ['Tofuku-ji',                  temple,{w:30,d:26,rot:0,h:17,r:200,
+                                         halls:[[0,-70,26,13,0,1,{h:20,roof:26,bays:5}]]}],
+  ['Kodai-ji',                   temple,{w:20,d:15,rot:24,h:11,r:130,n:20}],
+  ['Daitoku-ji',                 temple,{w:24,d:18,rot:0,h:12,r:240,n:40,
+                                         halls:[[-78,-46,15,13,0,1,{h:7,roof:9}],
+                                                [ 76,-40,15,13,0,1,{h:7,roof:9}],
+                                                [-72, 54,15,13,0,1,{h:7,roof:9}],
+                                                [ 78, 58,15,13,0,1,{h:7,roof:9}],
+                                                [ -4,104,17,14,0,1,{h:8,roof:10}]]}],
+  ['Tenryu-ji',                  temple,{w:30,d:22,rot:0,h:14,r:200,
+                                         halls:[[-40,14,18,14,0,1,{h:9,roof:12}],
+                                                [ 34,10,16,12,0,1,{h:8,roof:11}]]}],
+  /* torii is a pitch in metres, so it is also the difference between these three:
+     Nezu's tunnel has them touching, Wakamiya Oji has three in six hundred metres. */
+  ['Nezu Shrine',                shrine,{w:16,d:11,rot:16,h:8,r:120,n:22,
+                                         app:62,appW:2.2,torii:1.3,toriiH:2.5}],
+  ['Tsurugaoka Hachimangu',      shrine,{w:26,d:15,rot:0,h:13,r:190,n:34,
+                                         app:320,appW:17,torii:110,toriiH:12}],
+  ['Fujisan Hongu Sengen Taisha',shrine,{w:22,d:14,rot:0,h:16,r:160,
+                                         app:140,appW:12,torii:70,toriiH:10}],
+  ['Yoyogi Park',                grove, {r:470,n:320,h:17}],
+  ['Rikugien',                   grove, {r:185,n:210,h:13,ea:1.15,conc:.8}],
+  ['Yoshino-yama',               grove, {r:820,n:420,h:8,ea:.42,eb:1.5,rot:10,conc:.7,stem:.5}],
+  ['Hakone Open-Air Museum',     grove, {r:165,n:160,h:7,conc:1.1}],
+  ['Omoide Yokocho',             lane,  {rot:84,len:110,w:2.2,ribs:2.4,h:6,front:6}],
+  ['Yanaka',                     lane,  {rot:4,len:180,w:5.5,ribs:4,h:7,front:8}],
+  /* Not a lane: two banks and a cherry every nine metres along both of them, which is
+     the only reason anyone goes. */
+  ['Meguro River',               lane,  {rot:138,len:900,w:9,ribs:9,h:9}],
+  ['Naramachi',                  blocks,{r:150,n:16,w:7,d:14,h:8,rot:0}],
+  ['Nakazakicho',                blocks,{r:120,n:14,w:6,d:12,h:8,rot:0}],
+  ['Shimokitazawa',              blocks,{r:175,n:13,w:9,d:11,h:12}],
+  ['Toyosu Market',              blocks,{r:260,n:4,w:120,d:80,h:22,rot:12}],
+  /* Osaka Aquarium is not here. It stands on reclaimed land in Osaka Bay, and this
+     map's coastline does not have that land — the anchor and everything for four
+     hundred metres around it is sea as far as the map is concerned. Drawing a
+     building on it would be the drawing contradicting the map it is drawn on, so
+     the Kaiyukan keeps its surroundings portrait like the Fuji lakes do. */
+  ['Odaiba',                     blocks,{r:330,n:7,w:56,d:44,h:48}]
 ];
 for(var ai=0;ai<ARCH.length;ai++)(function(a){
   if(!a[1])return;
@@ -1930,7 +2028,7 @@ var REGIONS=[
 /* ---- places ----
    Everything is keyed by a stable id, never by array position: your own places get
    added and deleted, and a saved itinerary must survive that. */
-var P=[],byId={},USER=[];
+var P=[],byId={},USER=[],TOURC={};
 function uid(){return 'u'+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36)}
 function nearestRegion(lng,lat){
   var best='tokyo',bd=1e9;
@@ -1945,7 +2043,7 @@ function nearestRegion(lng,lat){
   return bd>1.6?'elsewhere':best;
 }
 function rebuildPlaces(){
-  P=[];byId={};
+  P=[];byId={};TOURC={};                          /* the walk is cached; its pool just changed */
   function add(o){o.x=mx(o.lng);o.y=my(o.lat);P.push(o);byId[o.id]=o}
   for(var i=0;i<PLACES.length;i++){var r=PLACES[i];
     add({id:'b'+i,name:r[0],ja:r[1],cat:r[2],region:r[3],lat:r[4],lng:r[5],rank:r[6],
@@ -2600,20 +2698,48 @@ function revealScale(p){
   return Math.max(9000,Math.min(MAXS,Math.max(fit,Math.min(lift,fit*2))));
 }
 
-/* Everything in the region you are looking at, iconic first, so stepping through it
-   is a tour rather than a list. Respects the category filters — if you have turned
-   restaurants off, the tour does not walk you through them. */
+/* Everything in the region you are looking at, in the order you would actually walk it.
+   Respects the category filters — if you have turned restaurants off, the tour does not
+   walk you through them.
+
+   Sorting by rank showed the best things first and then threw you across the city and
+   back four times. A greedy nearest-neighbour chain from the most iconic place reads as
+   a route instead: Gion, then Pontocho a block away, then Nishiki. Greedy is the right
+   amount of cleverness here — this is a suggestion for what to look at next, not a
+   travelling-salesman solution, and the failure mode of greedy (one long hop at the end
+   to pick up a straggler) is exactly what a real day out looks like anyway. */
+function tourOrder(pool){
+  if(pool.length<3)return pool.slice();
+  var rest=pool.slice();
+  rest.sort(function(a,b){return (a.rank-b.rank)||(a.id<b.id?-1:1)});
+  var out=[rest.shift()];                        /* seed on the most iconic */
+  while(rest.length){
+    var cur=out[out.length-1],bi=0,bd=Infinity;
+    for(var k=0;k<rest.length;k++){
+      var d=haversine(cur,rest[k]);
+      if(d<bd){bd=d;bi=k}
+    }
+    out.push(rest.splice(bi,1)[0]);
+  }
+  return out;
+}
+/* activeRegion alone, not the selection's region: select() already moves the chip to the
+   place it opened, so the two agree — except when you change the chip by hand, and then
+   the chip is what you meant. */
 function tourList(){
-  var reg=(sel&&byId[sel])?byId[sel].region:activeRegion;
-  var out=P.filter(function(q){
+  var reg=activeRegion;
+  var key=reg+'|'+Object.keys(CATS).map(function(c){return filters[c]===false?'0':'1'}).join('');
+  if(TOURC[key])return TOURC[key];
+  var pool=P.filter(function(q){
     return filters[q.cat]!==false && (reg==='route'||reg==='all'||q.region===reg);
   });
-  out.sort(function(a,b){return (a.rank-b.rank)||(a.id<b.id?-1:1)});
-  return out;
+  return (TOURC[key]=tourOrder(pool));
 }
 function tourGo(dir){
   var L=tourList();if(!L.length)return;
-  var i=0;
+  /* From a cold map ‹ picks up the end of the walk and › the start of it, so either
+     button is a way in rather than both landing on the same place. */
+  var i=dir>0?0:L.length-1;
   if(sel){for(var k=0;k<L.length;k++)if(L[k].id===sel){i=k+dir;break}}
   i=(i%L.length+L.length)%L.length;
   select(L[i].id,true);
@@ -2625,8 +2751,10 @@ function select(id,fly){
   if(fopen)closeForm();
   /* Land where the drawing reads, not merely where the mark is. */
   if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p)},700);
-  renderDetail(p);
+  /* The chip moves first: the panel's tour counter reads off the region's walk, and
+     rendering before the move counted this place against the one you came from. */
   setRegionChip(p.region);
+  renderDetail(p);
 }
 function closeDetail(){sel=null;needOver=true;document.getElementById('detail').classList.remove('open')}
 function glyphSvg(cat,color){
@@ -2711,7 +2839,14 @@ function portrait(p,cw,ch){
     var ex=(PX[idx[i]]-p.lng)*ax-mx2, ny=(myInv(PY[idx[i]])-p.lat)*110574-my2;
     xx+=ex*ex;xy+=ex*ny;yy+=ny*ny;
   }
-  var yaw=(Math.abs(xy)<1e-9&&Math.abs(xx-yy)<1e-9)?POR_YAW:.5*Math.atan2(2*xy,xx-yy)+POR_YAW*.5;
+  /* How far off square to swing depends on how linear the place is. On a compact
+     precinct the swing is what turns a plan into a view. On a lane or an approach it
+     buys nothing — the site is an elevation either way — and all it does is tip the
+     street downhill, which every long site was doing by the same eight degrees. */
+  var tr=(xx+yy)*.5, dv=Math.sqrt((xx-yy)*(xx-yy)*.25+xy*xy);
+  var elong=tr>1e-9?dv/tr:0;
+  var yaw=(Math.abs(xy)<1e-9&&Math.abs(xx-yy)<1e-9)?POR_YAW
+          :.5*Math.atan2(2*xy,xx-yy)+POR_YAW*.5*(1-elong);
   var cs=Math.cos(yaw),sn=Math.sin(yaw),sp=Math.sin(POR_PIT),cp=Math.cos(POR_PIT);
   var P2=[],su=[],sv=[],sg=[];
   for(i=0;i<idx.length;i++){
@@ -3111,6 +3246,8 @@ document.addEventListener('pointerdown',function(e){
 },true);
 
 /* ---- nav buttons ---- */
+document.getElementById('nprev').onclick=function(){tourGo(-1);killHint()};
+document.getElementById('nnext').onclick=function(){tourGo(1);killHint()};
 document.getElementById('zin').onclick=function(){zoomAt(W/2,H/2,1.6);killHint()};
 document.getElementById('zout').onclick=function(){zoomAt(W/2,H/2,1/1.6);killHint()};
 document.getElementById('zrst').onclick=function(){setRegionChip('route');flyTo(fit(REGIONS[0].box,regionPad('route')),760);killHint()};
