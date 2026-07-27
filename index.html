@@ -9,7 +9,7 @@
 <style>
 /* One committed world: sumi ink on washi. No dark variant — this is a printed map. */
 :root{
-  --ground:#F1EBDD; --ground-2:#E7E0CE; --panel:rgba(243,238,227,.88); --panel-solid:#F5F0E6;
+  --ground:#F1EBDD; --ground-2:#E7E0CE; --panel:#F3EEE3; --panel-solid:#F5F0E6;
   --ink:#221F1B; --ink-dim:#5C574E; --ink-faint:#918A7B;
   --line:rgba(34,31,27,.13); --line-strong:rgba(34,31,27,.26);
   --shu:#B5372A; --shu-dim:rgba(181,55,42,.5); --shu-wash:rgba(181,55,42,.085);
@@ -32,6 +32,10 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body
 #stage.dragging{cursor:grabbing}
 #stage.placing{cursor:crosshair}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* 56 pixels, parked on the selected marker — not a third full-screen layer. An
+   empty full-screen canvas still costs the compositor several milliseconds on
+   every frame of a drag just by existing in the stack. */
+#fx{inset:auto;left:0;top:0;width:56px;height:56px;pointer-events:none;display:none;will-change:transform}
 #paper{position:absolute;inset:0;z-index:0;pointer-events:none;mix-blend-mode:multiply;opacity:.5}
 #paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #grain{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:.55;mix-blend-mode:multiply}
@@ -39,9 +43,16 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body
 #vig{position:fixed;inset:0;pointer-events:none;z-index:3;
   background:radial-gradient(125% 95% at 50% 45%,transparent 58%,rgba(122,100,64,.13) 100%)}
 
-/* ---- panels: paper laid on paper. One hairline, a soft shadow, generous air. ---- */
+/* ---- panels: paper laid on paper. One hairline, a soft shadow, generous air.
+   No backdrop blur. A 9px blur behind every panel is re-computed by the compositor
+   every time the canvas under it changes — which during a drag or a tour flight is
+   every frame, and with the detail panel open it was costing more than the entire
+   rest of the frame. Sitting still with a place selected ran at 16fps for the sake
+   of a frosted edge nobody was looking at. The panel is solid instead: the sheet
+   reads as paper laid on paper rather than as glass over it. Solid rather than
+   merely near-opaque because without the blur to diffuse it, the city names under
+   the panel came through as legible text behind the text. ---- */
 .panel{position:fixed;z-index:5;background:var(--panel);border:1px solid var(--line);
-  backdrop-filter:blur(9px) saturate(1.05);-webkit-backdrop-filter:blur(9px) saturate(1.05);
   box-shadow:var(--shadow);border-radius:2px}
 .eyebrow{font-family:var(--f-body);text-transform:uppercase;letter-spacing:.19em;font-size:9px;
   color:var(--ink-faint);font-weight:600}
@@ -341,7 +352,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   #sheetclose{top:18px;right:18px}
   #sheetbtn{display:flex;align-items:center;gap:7px;position:fixed;z-index:6;bottom:130px;right:60px;
     padding:0 13px;height:38px;background:var(--panel);border:1px solid var(--line);border-radius:2px;
-    box-shadow:var(--shadow);backdrop-filter:blur(9px);text-transform:uppercase;
+    box-shadow:var(--shadow);text-transform:uppercase;
     letter-spacing:.14em;font-size:9.5px;font-weight:600;color:var(--shu)}
 }
 @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
@@ -351,6 +362,13 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 <div id="stage">
   <div id="paper" aria-hidden="true"></div>
   <canvas id="base"></canvas>
+  <!-- The selected marker's pulse, and nothing else. It is a 40px ring that changes
+       thirty times a second; on the overlay it was clearing and repainting a
+       full-screen canvas under a multiply layer to do it, which cost more than
+       everything else on the map put together. Here it damages one small rectangle.
+       Below #over on purpose, so the ring still passes under the markers and the
+       labels exactly as it did when it was the first thing renderOver drew. -->
+  <canvas id="fx" aria-hidden="true"></canvas>
   <canvas id="over" role="img" aria-label="A point-cloud map of Japan. Zoom into a city and the same dots resolve into its streets, temple precincts and alleys. Use the search field, the region buttons and the itinerary list to navigate without the map."></canvas>
 </div>
 <div id="grain" aria-hidden="true"></div>
@@ -1517,6 +1535,26 @@ function crosses(idx,lng,lat){
   }
   return c;
 }
+/* Is every point of this box on land, provably?
+   Not sampled — if no island edge and no lake edge has a bounding box overlapping
+   the view, then the view cannot straddle a shoreline, and one probe settles the
+   whole frame. Worth proving because the ground lattice calls landFast about 28,000
+   times a frame and inside a city the answer is "yes" every single time.
+   Only attempted for a view short enough to span a few edge-index rows; above that
+   the coastline is in frame anyway and there is nothing to prove. */
+function boxAllLand(x0,x1,lat0,lat1){
+  if(lat1-lat0>0.5)return false;
+  var r0=Math.floor(lat0/ROW),r1=Math.floor(lat1/ROW),sets=[IEDGE,LEDGE],t,i,r,e,k;
+  for(t=0;t<2;t++)for(i=0;i<sets[t].length;i++)for(r=r0;r<=r1;r++){
+    e=sets[t][i][r];if(!e)continue;
+    for(k=0;k<e.length;k+=4){
+      if(e[k]<e[k+2]?e[k+2]<x0||e[k]>x1:e[k]<x0||e[k+2]>x1)continue;
+      if(e[k+1]<e[k+3]?e[k+3]<lat0||e[k+1]>lat1:e[k+1]<lat0||e[k+3]>lat1)continue;
+      return false;                       /* a shoreline crosses the view */
+    }
+  }
+  return landFast((x0+x1)*.5,(lat0+lat1)*.5);
+}
 function landFast(lng,lat){
   for(var i=0;i<ISLANDS.length;i++){
     var b=IBOX[i];
@@ -1533,9 +1571,60 @@ function landFast(lng,lat){
   return false;
 }
 
-/* spatial grid for viewport culling */
-var CELL=0.25, GRID={};
-(function(){for(var i=0;i<NPTS;i++){var k=Math.floor(PX[i]/CELL)+"|"+Math.floor(PY[i]/CELL);(GRID[k]||(GRID[k]=[])).push(i)}})();
+/* ---- the cloud is finished; freeze it ----
+   push() needs growable arrays, but nothing writes after this point and the cull
+   reads all five of them for every candidate point, every frame. Float64 throughout
+   rather than Float32 for a reason: PZ and PH carry fractions that decide which
+   points draw and where, and rounding them would move the drawing. This is a
+   representation change only — the values are bit-identical. */
+(function(){
+  var fx=new Float64Array(NPTS),fy=new Float64Array(NPTS),fz=new Float64Array(NPTS),
+      fh=new Float64Array(NPTS),fb=new Uint8Array(NPTS),i;
+  for(i=0;i<NPTS;i++){fx[i]=PX[i];fy[i]=PY[i];fz[i]=PZ[i];fh[i]=PH[i];fb[i]=PB[i]}
+  PX=fx;PY=fy;PZ=fz;PH=fh;PB=fb;
+})();
+
+/* ---- viewport culling index ----
+   One 0.25-degree grid keyed by a built string failed at both ends of the zoom
+   range. At street zoom the viewport is a thousandth of a cell, so it walked all
+   21,920 points in Kyoto's cell to keep the 6,586 on screen. At country zoom the
+   box rejects nothing and the PZ gate was applied after the point had been loaded,
+   so it walked all 141,777 to keep 9,991 — and paid 16,000 string builds to reach
+   987 real cells.
+
+   Three cell sizes fix the first: take the finest whose cells cover the view in a
+   few hundred lookups. Sorting each cell by PZ fixes the second — the scan stops at
+   the first point too fine to draw instead of testing every one after it.
+
+   Layout is a counting sort into one flat Int32Array per level, so a cell is a
+   contiguous run rather than a separate array object. */
+var IX_CELL=[2,0.25,0.01],IX_MAXCELLS=600,IX=[];
+function ixKey(ci,cj){return (ci+1048576)*2097152+(cj+1048576)}
+(function(){
+  for(var L=0;L<IX_CELL.length;L++){
+    var cell=IX_CELL[L],slot=new Map(),keys=new Float64Array(NPTS),n=0,i,k;
+    for(i=0;i<NPTS;i++){
+      k=ixKey(Math.floor(PX[i]/cell),Math.floor(PY[i]/cell));
+      keys[i]=k;
+      if(!slot.has(k))slot.set(k,n++);
+    }
+    var start=new Int32Array(n+1),order=new Int32Array(NPTS);
+    for(i=0;i<NPTS;i++)start[slot.get(keys[i])+1]++;
+    for(i=0;i<n;i++)start[i+1]+=start[i];
+    var cur=start.slice(0,n);
+    for(i=0;i<NPTS;i++){var sl=slot.get(keys[i]);order[cur[sl]++]=i}
+    for(i=0;i<n;i++)order.subarray(start[i],start[i+1]).sort(function(a,b){return PZ[a]-PZ[b]});
+    IX.push({cell:cell,slot:slot,start:start,order:order});
+  }
+})();
+/* the finest level that still covers the view in a manageable number of lookups */
+function ixLevel(x0,x1,y0,y1){
+  for(var L=IX.length-1;L>0;L--){
+    var c=IX_CELL[L];
+    if((Math.floor(x1/c)-Math.floor(x0/c)+1)*(Math.floor(y1/c)-Math.floor(y0/c)+1)<=IX_MAXCELLS)return L;
+  }
+  return 0;
+}
 </script>
 <script>
 /*! Paper Shaders — paper-texture — https://github.com/paper-design/shaders — Apache-2.0. Bundled subset: ShaderMount + paper-texture fragment shader + noise texture. */
@@ -2000,8 +2089,10 @@ void main() {
 'use strict';
 var stage=document.getElementById('stage'),
     bc=document.getElementById('base'),bx=bc.getContext('2d'),
-    oc=document.getElementById('over'),ox=oc.getContext('2d');
+    oc=document.getElementById('over'),ox=oc.getContext('2d'),
+    fc=document.getElementById('fx'),fxc=fc.getContext('2d');
 var W=0,H=0,dpr=1;
+var FXR=28;   /* half the pulse canvas: the ring reaches 6.5+17 plus its stroke */
 var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
 var CATS={
@@ -2093,12 +2184,21 @@ var SIZE=[.8,1.1,1.0,1.05,1.45,1.15,.95,1.25];
    So the ramp is capped per bucket, tightest on the things whose whole meaning is
    the space between them. */
 var ZCAP=[9,2.4,2.4,9,9,2.4,1.7,1.9];
+var GEN=[1,0,0,1,1,0,0,0];   /* which buckets the per-frame lattice can emit */
 
+/* 1.5, not 2. Three full-screen canvases at 2x on a 1440x900 retina screen is 15.5
+   million pixels a frame and about 62MB of backing store, and the cloud is stipple —
+   1-4px squares of ink on paper, which is the kind of drawing that loses least to a
+   softer pixel. 1.5 is 44% of the pixels of 2x. Held here rather than switched down
+   during motion on purpose: a resolution that changes under you is a worse artefact
+   than one that is slightly soft and stays put. */
+var DPR_CAP=1.5;
 function resize(){
-  dpr=Math.min(window.devicePixelRatio||1,2);
+  dpr=Math.min(window.devicePixelRatio||1,DPR_CAP);
   W=stage.clientWidth;H=stage.clientHeight;
   [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
-  bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);
+  fc.width=fc.height=Math.round(FXR*2*dpr);
+  bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);fxc.setTransform(dpr,0,0,dpr,0,0);
   dirty=true;
 }
 
@@ -2175,26 +2275,26 @@ function renderBase(){
   var s=V.s;
   bx.clearRect(0,0,W,H);
   drawGraticule();
-  var m=0.04*(1/V.s)*100+0.3;
   /* MAXPH, not a constant: the lift pushes points up the screen, so the cull has to
      reach further DOWN than the viewport or a tall thing whose base sits just below
      the bottom edge loses the roof that should still be visible. Clamped to one
      screen: MAXPH is Fuji's, and reaching 27km further down at street zoom would
      pull whole extra GRID rows into the scan for something that cannot be in frame. */
   var x0=xOfS(-40),x1=xOfS(W+40),y0=yOfS(H+40)-Math.min(MAXPH,H/s),y1=yOfS(-40);
-  var ci0=Math.floor(x0/CELL),ci1=Math.floor(x1/CELL),cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
+  var IXL=IX[ixLevel(x0,x1,y0,y1)],cell=IXL.cell,slot=IXL.slot,start=IXL.start,order=IXL.order;
+  var ci0=Math.floor(x0/cell),ci1=Math.floor(x1/cell),cj0=Math.floor(y0/cell),cj1=Math.floor(y1/cell);
   bufN.fill(0);
   /* pass 1 — which points are on screen at this zoom */
   var vn=0;
   for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
-    var cellPts=GRID[ci+"|"+cj];if(!cellPts)continue;
-    for(var q=0;q<cellPts.length;q++){
-      var p=cellPts[q];
-      if(PZ[p]>s)continue;
+    var sl=slot.get(ixKey(ci,cj));if(sl===undefined)continue;
+    for(var q=start[sl],qe=start[sl+1];q<qe;q++){
+      var p=order[q];
+      /* the run is PZ-ascending, so the first point too fine to draw ends the cell */
+      if(PZ[p]>s)break;
       var px=PX[p],py=PY[p];
       if(px<x0||px>x1||py<y0||py>y1)continue;
       visIdx[vn++]=p;
-      if(vn>=visIdx.length)break;
     }
   }
   /* pass 2 — past street zoom, each land point seeds deterministic children to fill
@@ -2230,6 +2330,14 @@ function renderBase(){
         if(u[0]+ur<x0||u[0]-ur>x1||u[1]+ur<latLo||u[1]-ur>latHi)continue;
         nearU.push(u);
       }
+      /* Two things this frame already knows that the inner loop was rediscovering
+         28,000 times over. First: whether the view is entirely inland, in which case
+         the coastline test is a constant. Second: whether the built-up weight can
+         still matter — `wgt` is multiplied by 1-smoothstep(4000,20000,s) below, so
+         at s>=20000 it is exactly zero and the city-glow loop and both noise octaves
+         are computing a number that cannot reach the screen. That is around 280,000
+         hash calls a frame at street zoom, discarded. */
+      var allLand=boxAllLand(x0,x1,latLo,latHi), urbanOn=s<20000, uflat=1-smoothstep(4000,20000,s);
       var stepD=Math.sqrt((x1-x0)*(y1-y0)/want),jit=stepD*1.55,tried=0;
       for(var gx=Math.floor(x0/stepD)*stepD;gx<x1;gx+=stepD)
       for(var gy=Math.floor(y0/stepD)*stepD;gy<y1;gy+=stepD){
@@ -2243,7 +2351,7 @@ function renderBase(){
         var qgx=Math.round(gx/stepD),qgy=Math.round(gy/stepD);
         var lx=gx+(h2(qgx,qgy)-.5)*jit, ly=gy+(h2(qgy+1,qgx+1)-.5)*jit;
         var la=myInv(ly);
-        if(!landFast(lx,la))continue;
+        if(!allLand&&!landFast(lx,la))continue;
         /* Snap onto the street lattice. Kyoto really is a grid, so this is accurate
            rather than a cheat — and it is the reason the grid is not stored: at 8m
            dot pitch the central cho lattice alone would outweigh the rest of this
@@ -2261,27 +2369,30 @@ function renderBase(){
             break;
           }
         }
-        /* built-up weight, so a city reads as a bright basin and the hills stay dim */
-        var wgt=0;
-        for(var uk=0;uk<nearU.length;uk++){
-          var uu=nearU[uk],ddx=(lx-uu[0])*.82,ddy=la-uu[1];
-          var tt=(ddx*ddx+ddy*ddy)/(uu[2]*uu[2]);
-          if(tt<9){var ww=Math.exp(-tt*.5);if(ww>wgt)wgt=ww}
-        }
-        /* mottle it: blocks and gaps inside the city, a gradient at its edge.
-           Bilinear value noise clusters around .5, so stretch it before thresholding
-           or every point lands in the same bucket. */
-        var nz=.62*vnoise(lx,la,58)+.38*vnoise(lx,la,215);
-        /* Strong mottling reads as cities from a distance but as clumpy noise up
-           close, so ease it off as the view tightens. */
-        nz=(nz-.5)*(s>1600?.85:1.9)+.5;if(nz<0)nz=0;else if(nz>1)nz=1;
-        wgt*=.25+1.35*nz;
-        /* Once the window is narrower than a neighbourhood, "this is a dense city"
+        /* built-up weight, so a city reads as a bright basin and the hills stay dim.
+           Once the window is narrower than a neighbourhood, "this is a dense city"
            has stopped being information — everything in frame is the city. Left
            saturated, every fill dot becomes urban-core: near-full alpha at the
-           largest dot size, a wall of ink that no street line survives. Flatten it
-           over the span the drawing arrives on, and the fill hands its emphasis over. */
-        wgt*=1-smoothstep(4000,20000,s);
+           largest dot size, a wall of ink that no street line survives. uflat
+           flattens it over the span the drawing arrives on, and the fill hands its
+           emphasis over — reaching exactly zero at s=20000, which is why none of
+           this runs past there. */
+        var wgt=0;
+        if(urbanOn){
+          for(var uk=0;uk<nearU.length;uk++){
+            var uu=nearU[uk],ddx=(lx-uu[0])*.82,ddy=la-uu[1];
+            var tt=(ddx*ddx+ddy*ddy)/(uu[2]*uu[2]);
+            if(tt<9){var ww=Math.exp(-tt*.5);if(ww>wgt)wgt=ww}
+          }
+          /* mottle it: blocks and gaps inside the city, a gradient at its edge.
+             Bilinear value noise clusters around .5, so stretch it before thresholding
+             or every point lands in the same bucket. */
+          var nz=.62*vnoise(lx,la,58)+.38*vnoise(lx,la,215);
+          /* Strong mottling reads as cities from a distance but as clumpy noise up
+             close, so ease it off as the view tightens. */
+          nz=(nz-.5)*(s>1600?.85:1.9)+.5;if(nz<0)nz=0;else if(nz>1)nz=1;
+          wgt*=(.25+1.35*nz)*uflat;
+        }
         var lb=wgt>.92?4:wgt>.48?3:0;
         if(lb===0&&h2(qgx+7,qgy+13)>.26+wgt*1.5)continue; /* thin out open country */
         if(bufN[lb]>=CAP)continue;
@@ -2293,7 +2404,6 @@ function renderBase(){
     }
   }
   var zf=s<200?1:s<1400?1.35:s<8000?1.9:s<40000?2.6:3.2,gd=groundDim();
-  var GEN=[1,0,0,1,1,0,0,0];   /* which buckets the per-frame lattice can emit */
   /* Ground, city and city-core are the generated body of the cloud and go first,
      so the drawn geography — coast, ridge, Fuji, and the streets and sites — prints
      over the top of it rather than under. */
@@ -2343,11 +2453,33 @@ function placeLabel(rects,x,y,w,h){
   return null;
 }
 
+/* ---- text metrics, cached on font + string ----
+   Every label is drawn glyph by glyph so the letter-spacing can be honoured, which
+   meant one measureText per character per label per frame — 427 a frame at Tokyo
+   zoom, thirty times a second for as long as anything was selected, all of them
+   re-measuring the same two dozen glyphs in the same two fonts. The set of strings
+   this map draws is fixed and small, so the cache is bounded and warms in one frame.
+   setFont is part of the same fix twice over: assigning ctx.font re-parses the CSS
+   even when it has not changed, and the cache key has to know which font is live —
+   so nothing may assign ox.font directly. */
+var TMC=Object.create(null),TMFont='';
+function setFont(f){if(TMFont!==f){TMFont=f;ox.font=f}}
+function measW(txt){
+  var k=TMFont+' '+txt,v=TMC[k];
+  if(v===undefined)v=TMC[k]=ox.measureText(txt).width;
+  return v;
+}
+/* .toUpperCase() allocated a fresh string per label per frame */
+var UCC=Object.create(null);
+function upper(s){var v=UCC[s];if(v===undefined)v=UCC[s]=s.toUpperCase();return v}
+
 /* A name set in ink over a dense ink city is unreadable, so every label gets a
    paper halo knocked out behind it first — the same trick a printed map uses. */
+var ILW=[];
 function inkLabel(txt,x,y,sp,alpha,color){
-  var i,w=[],off=0;
-  for(i=0;i<txt.length;i++)w.push(ox.measureText(txt[i]).width);
+  var i,w=ILW,off=0;
+  w.length=txt.length;
+  for(i=0;i<txt.length;i++)w[i]=measW(txt[i]);
   ox.save();ox.translate(x,y);
   ox.lineJoin='round';ox.miterLimit=2;
   ox.globalAlpha=.92;ox.strokeStyle=COL.ground;ox.lineWidth=3.4;
@@ -2357,22 +2489,47 @@ function inkLabel(txt,x,y,sp,alpha,color){
   ox.restore();
 }
 
+/* The rail in projected coordinates with a bounding box, built once. */
+var RAILP=(function(){
+  var out=[],i,k;
+  for(i=0;i<RAIL.length;i++){
+    var ln=RAIL[i],n=ln.length-1,xs=new Float64Array(n),ys=new Float64Array(n);
+    var x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+    for(k=0;k<n;k++){
+      xs[k]=mx(ln[k+1][0]);ys[k]=my(ln[k+1][1]);
+      if(xs[k]<x0)x0=xs[k];if(xs[k]>x1)x1=xs[k];
+      if(ys[k]<y0)y0=ys[k];if(ys[k]>y1)y1=ys[k];
+    }
+    out.push({main:ln[0]===2,xs:xs,ys:ys,x0:x0,x1:x1,y0:y0,y1:y1});
+  }
+  return out;
+})();
+
+/* trip.indexOf() ran once per mark and twice more inside every sort comparison —
+   an O(n log n * |trip|) pile of linear scans, rebuilt every overlay frame. */
+var TRIPIX=new Map();
+function tripIndex(){TRIPIX.clear();for(var i=0;i<trip.length;i++)TRIPIX.set(trip[i],i);return TRIPIX}
 function renderOver(){
   ox.clearRect(0,0,W,H);
-  var s=V.s;
+  var s=V.s,TI=tripIndex();
 
-  /* rail first — it sits under everything else */
+  /* rail first — it sits under everything else. Projected once at load rather than
+     re-running a log(tan()) over all 41 vertices every frame, and skipped line by
+     line when it is nowhere near the window — the whole network was being stroked
+     at street zoom with none of it in frame. */
   if(s<9000){
+    var vx0=xOfS(0),vx1=xOfS(W),vy0=yOfS(H),vy1=yOfS(0);
     ox.lineCap='round';
-    for(var ri2=0;ri2<RAIL.length;ri2++){
-      var ln=RAIL[ri2],main=ln[0]===2;
+    for(var ri2=0;ri2<RAILP.length;ri2++){
+      var ln=RAILP[ri2];
+      if(ln.x1<vx0||ln.x0>vx1||ln.y1<vy0||ln.y0>vy1)continue;
       ox.strokeStyle=COL.ink;
-      ox.globalAlpha=main?(s<80?.34:.44):(s<80?.16:.22);
-      ox.lineWidth=main?1.5:1;
+      ox.globalAlpha=ln.main?(s<80?.34:.44):(s<80?.16:.22);
+      ox.lineWidth=ln.main?1.5:1;
       ox.beginPath();
-      for(var pi2=1;pi2<ln.length;pi2++){
-        var a2=ln[pi2],px2=sxOf(mx(a2[0])),py2=syOf(my(a2[1]));
-        if(pi2===1)ox.moveTo(px2,py2);else ox.lineTo(px2,py2);
+      for(var pi2=0;pi2<ln.xs.length;pi2++){
+        var px2=sxOf(ln.xs[pi2]),py2=syOf(ln.ys[pi2]);
+        if(pi2===0)ox.moveTo(px2,py2);else ox.lineTo(px2,py2);
       }
       ox.stroke();
     }
@@ -2420,15 +2577,15 @@ function renderOver(){
     rects.push([x-sr-3,y-sr-3,(sr+3)*2,(sr+3)*2]);
 
     var fs=tier===1?(s<95?13:15):tier===2?11.5:10;
-    ox.font='600 '+fs+'px '+'"Hiragino Mincho ProN","Yu Mincho",Georgia,serif';
-    var tx=cl[0].toUpperCase(),sp=tier===1?2.4:1.7;
-    var tw=ox.measureText(tx).width+tx.length*sp;
+    setFont('600 '+fs+'px '+'"Hiragino Mincho ProN","Yu Mincho",Georgia,serif');
+    var tx=upper(cl[0]),sp=tier===1?2.4:1.7;
+    var tw=measW(tx)+tx.length*sp;
     var showJa=tier<=2&&s>60;
     var pos=placeLabel(rects,x,y,tw,fs+(showJa?13:2));
     if(!pos)continue;
     inkLabel(tx,pos[0],pos[1],sp,tier===1?.96:tier===2?.84:.68,COL.ink);
     if(showJa){
-      ox.font='500 '+(fs-3)+'px "Hiragino Mincho ProN","Yu Mincho",serif';
+      setFont('500 '+(fs-3)+'px "Hiragino Mincho ProN","Yu Mincho",serif');
       inkLabel(cl[1],pos[0],pos[1]+fs-1,1.5,.66,COL.inkDim);
     }
   }
@@ -2463,17 +2620,12 @@ function renderOver(){
   var showLabels=s>=430;
   for(var j=0;j<marks.length;j++){
     var p=marks[j].p,mxs=marks[j].x,mys=marks[j].y;
-    var isSel=sel===p.id, tripIdx=trip.indexOf(p.id), inTrip=tripIdx>=0;
+    var isSel=sel===p.id, tripIdx=TI.has(p.id)?TI.get(p.id):-1, inTrip=tripIdx>=0;
     var r=isSel?6.5:hover===p.id?5.8:4.6;
     /* Colour says whose it is — vermilion for your own marks, ink for mine.
        Filled-and-numbered says it's in the itinerary. Two signals, one accent. */
     var col=p.mine?COL.shu:COL.ink;
 
-    if(isSel&&!reduce){
-      var pulse=(phase%90)/90;
-      ox.globalAlpha=(1-pulse)*.5;ox.strokeStyle=col;ox.lineWidth=1.2;
-      ox.beginPath();ox.arc(mxs,mys,r+pulse*17,0,6.2832);ox.stroke();
-    }
     /* knock the ground out behind each glyph so it reads over the cloud */
     ox.globalAlpha=.85;ox.fillStyle=COL.ground;
     ox.beginPath();ox.arc(mxs,mys,r+2.2,0,6.2832);ox.fill();
@@ -2484,7 +2636,7 @@ function renderOver(){
       ox.beginPath();ox.arc(mxs,mys,r+3.6,0,6.2832);ox.stroke()}
     if(inTrip){
       ox.globalAlpha=1;ox.fillStyle=col;
-      ox.font='600 9px ui-monospace,"SF Mono",monospace';ox.textAlign='center';
+      setFont('600 9px ui-monospace,"SF Mono",monospace');ox.textAlign='center';
       ox.beginPath();ox.arc(mxs+r+5,mys-r-4,6,0,6.2832);ox.fill();
       ox.fillStyle=COL.ground;ox.fillText(String(tripIdx+1),mxs+r+5,mys-r-3.5);
       ox.textAlign='left';
@@ -2494,12 +2646,12 @@ function renderOver(){
   /* place labels, biggest first, no overlaps */
   {
     var order=marks.slice().sort(function(a,b){
-      var as=(sel===a.p.id?0:trip.indexOf(a.p.id)>=0?1:a.p.mine?1:2)*10+a.p.rank;
-      var bs=(sel===b.p.id?0:trip.indexOf(b.p.id)>=0?1:b.p.mine?1:2)*10+b.p.rank;
+      var as=(sel===a.p.id?0:TI.has(a.p.id)?1:a.p.mine?1:2)*10+a.p.rank;
+      var bs=(sel===b.p.id?0:TI.has(b.p.id)?1:b.p.mine?1:2)*10+b.p.rank;
       return as-bs;
     });
     for(var m=0;m<order.length;m++){
-      var o=order[m],pl=o.p,isS=sel===pl.id,isT=trip.indexOf(pl.id)>=0;
+      var o=order[m],pl=o.p,isS=sel===pl.id,isT=TI.has(pl.id);
       /* Names arrive as you get closer: the iconic ones first, the rest on approach.
          Whatever is selected or saved is always named, at any zoom. */
       if(!isS&&!isT){
@@ -2509,8 +2661,8 @@ function renderOver(){
         else if(pl.rank===3&&s<1500)continue;
       }
       var fs2=isS?12:11;
-      ox.font='600 '+fs2+'px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif';
-      var txt=pl.name.toUpperCase(),tw2=ox.measureText(txt).width+txt.length*1.1;
+      setFont('600 '+fs2+'px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif');
+      var txt=upper(pl.name),tw2=measW(txt)+txt.length*1.1;
       var wantJa=s>700||isS;
       var pos2=placeLabel(rects,o.x,o.y+.5,tw2,fs2+(wantJa?13:2));
       if(!pos2){
@@ -2520,24 +2672,50 @@ function renderOver(){
       inkLabel(txt,pos2[0],pos2[1],1.1,isS||isT?1:hover===pl.id?.95:.84,
                isS||pl.mine?COL.shu:COL.ink);
       if(wantJa&&pl.ja){
-        ox.font='400 10px "Hiragino Mincho ProN","Yu Mincho",serif';
+        setFont('400 10px "Hiragino Mincho ProN","Yu Mincho",serif');
         inkLabel(pl.ja,pos2[0],pos2[1]+12,1.2,.68,COL.inkDim);
       }
     }
   }
   ox.globalAlpha=1;
 }
+/* The selected marker's pulse, on its own layer and clearing only the rectangle it
+   drew last time. The ring itself was never the cost — the cost was that drawing it
+   meant clearing a full-screen canvas sitting under a multiply layer, so the
+   compositor re-blended the whole window thirty times a second to animate forty
+   pixels. Sitting still with a place open ran at 16fps because of it. */
+var fxOn=false;
+function fxHide(){if(fxOn){fc.style.display='none';fxOn=false}}
+function renderFx(){
+  if(reduce||sel===null)return fxHide();
+  var p=byId[sel];if(!p)return fxHide();
+  var x=sxOf(p.x),y=syOf(p.y);
+  if(x<-FXR||x>W+FXR||y<-FXR||y>H+FXR)return fxHide();
+  var pulse=(phase%90)/90,rr=6.5+pulse*17;
+  fxc.clearRect(0,0,FXR*2,FXR*2);
+  fxc.globalAlpha=(1-pulse)*.5;fxc.strokeStyle=p.mine?COL.shu:COL.ink;fxc.lineWidth=1.2;
+  fxc.beginPath();fxc.arc(FXR,FXR,rr,0,6.2832);fxc.stroke();
+  fxc.globalAlpha=1;
+  fc.style.transform='translate('+(x-FXR)+'px,'+(y-FXR)+'px)';
+  if(!fxOn){fc.style.display='block';fxOn=true}
+}
 /* ---- loop ---- */
-var needOver=true,overTick=0;
+var needOver=true,overTick=0,fxDirty=true;
 function loop(){
   if(anim)stepAnim();
   if(dirty){renderBase();dirty=false;needOver=true;updateReadout()}
   /* A marching dash and a pulsing marker were holding the whole overlay at 60fps
      for as long as anything was selected — and renderOver re-places every label,
      measuring text as it goes. Both animations read identically at 30. phase steps
-     by two so neither changes speed. */
-  if(!reduce&&(sel!==null||trip.length>1)&&(overTick^=1)){phase+=2;needOver=true}
-  if(needOver){renderOver();needOver=false}
+     by two so neither changes speed.
+     Only the dash needs the big canvas now; the pulse has its own. So a selection on
+     its own no longer repaints the map at all — that costs one small rectangle. */
+  if(!reduce&&(sel!==null||trip.length>1)&&(overTick^=1)){
+    phase+=2;fxDirty=true;
+    if(trip.length>1)needOver=true;
+  }
+  if(needOver){renderOver();needOver=false;fxDirty=true}
+  if(fxDirty){renderFx();fxDirty=false}
   requestAnimationFrame(loop);
 }
 function invalidate(){dirty=true}
@@ -2569,19 +2747,29 @@ function zoomAt(px,py,f){
 
 /* ---- readout ---- */
 var STEPS=[.02,.05,.1,.2,.5,1,2,5,10,20,50,100,200,500,1000,2000];
+/* Four element lookups and three DOM writes ran on every dirty frame — every frame
+   of every drag and every tour flight — to set text that changes on maybe one frame
+   in ten. The nodes are cached and each write is guarded on the value actually
+   differing, because assigning textContent dirties layout even when it is the same
+   string. */
+var elSbbar,elSblbl,elRdz,elRdll,lastBar='',lastLbl='',lastZ='',lastLL='';
+function setText(el,v,last){if(v!==last)el.textContent=v;return v}
 function updateReadout(){
+  if(!elSbbar){elSbbar=document.getElementById('sbbar');elSblbl=document.getElementById('sblbl');
+               elRdz=document.getElementById('rdz');elRdll=document.getElementById('rdll')}
   var lat=myInv(V.cy),kmPerPx=111.32*Math.cos(lat*D2R)/V.s;
   var target=64,best=STEPS[0];
   for(var i=0;i<STEPS.length;i++){if(Math.abs(STEPS[i]/kmPerPx-target)<Math.abs(best/kmPerPx-target))best=STEPS[i]}
-  document.getElementById('sbbar').style.width=Math.round(best/kmPerPx)+'px';
-  document.getElementById('sblbl').textContent=best<1?(best*1000)+' m':best+' km';
+  var bar=Math.round(best/kmPerPx)+'px';
+  if(bar!==lastBar){elSbbar.style.width=bar;lastBar=bar}
+  lastLbl=setText(elSblbl,best<1?(best*1000)+' m':best+' km',lastLbl);
   var ratio=kmPerPx*1e6/0.2646;
   var mag=Math.pow(10,Math.floor(Math.log(ratio)/Math.LN10)-1);
   ratio=Math.round(ratio/mag)*mag;
-  document.getElementById('rdz').textContent='1:'+String(ratio).replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+  lastZ=setText(elRdz,'1:'+String(ratio).replace(/\B(?=(\d{3})+(?!\d))/g,' '),lastZ);
   var lng=V.cx;
-  document.getElementById('rdll').textContent=
-    Math.abs(lat).toFixed(4)+'° '+(lat>=0?'N':'S')+'   '+Math.abs(lng).toFixed(4)+'° '+(lng>=0?'E':'W');
+  lastLL=setText(elRdll,
+    Math.abs(lat).toFixed(4)+'° '+(lat>=0?'N':'S')+'   '+Math.abs(lng).toFixed(4)+'° '+(lng>=0?'E':'W'),lastLL);
 }
 
 /* ---- geo helpers ---- */
@@ -2600,6 +2788,12 @@ function hit(px,py){
 }
 
 /* ---- pointer / pan / zoom ---- */
+/* stage.getBoundingClientRect() was a forced layout read on every pointermove,
+   pinch, pointerup, wheel and dblclick — up to a hundred a second from a trackpad,
+   for a box that is pinned to the viewport and only moves on resize or scroll. */
+var SR=null;
+function stageRect(){return SR||(SR=stage.getBoundingClientRect())}
+window.addEventListener('scroll',function(){SR=null},true);
 var pts=new Map(),drag=null,pinch=null,moved=0;
 stage.addEventListener('pointerdown',function(e){
   stage.setPointerCapture(e.pointerId);
@@ -2618,7 +2812,7 @@ stage.addEventListener('pointermove',function(e){
   if(pinch&&pts.size>=2){
     var a=Array.from(pts.values());
     var d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
-    var r=stage.getBoundingClientRect();
+    var r=stageRect();
     var mid={x:(a[0].x+a[1].x)/2-r.left,y:(a[0].y+a[1].y)/2-r.top};
     if(pinch.d>0){var f=(d/pinch.d)*(pinch.s/V.s);zoomAt(mid.x,mid.y,f)}
     return;
@@ -2630,19 +2824,20 @@ stage.addEventListener('pointermove',function(e){
     invalidate();
     return;
   }
-  var rb=stage.getBoundingClientRect(),hx=e.clientX-rb.left,hy=e.clientY-rb.top;
+  var rb=stageRect(),hx=e.clientX-rb.left,hy=e.clientY-rb.top;
   var h=hit(hx,hy);
   if(h!==hover){hover=h;needOver=true;stage.style.cursor=h===null?'':'pointer'}
   var lat=myInv(yOfS(hy)),lng=xOfS(hx);
-  document.getElementById('rdll').textContent=
-    Math.abs(lat).toFixed(4)+'° '+(lat>=0?'N':'S')+'   '+Math.abs(lng).toFixed(4)+'° '+(lng>=0?'E':'W');
+  if(!elRdll)elRdll=document.getElementById('rdll');
+  lastLL=setText(elRdll,
+    Math.abs(lat).toFixed(4)+'° '+(lat>=0?'N':'S')+'   '+Math.abs(lng).toFixed(4)+'° '+(lng>=0?'E':'W'),lastLL);
 });
 function endPointer(e){
   pts.delete(e.pointerId);
   if(pts.size<2)pinch=null;
   if(drag&&pts.size===0){
     if(moved<6){
-      var rb=stage.getBoundingClientRect();
+      var rb=stageRect();
       var cx2=e.clientX-rb.left,cy2=e.clientY-rb.top;
       if(placing){dropPin(cx2,cy2)}
       else{
@@ -2655,14 +2850,25 @@ function endPointer(e){
 }
 stage.addEventListener('pointerup',endPointer);
 stage.addEventListener('pointercancel',endPointer);
+/* A trackpad emits around a hundred wheel events a second and each one used to
+   move the camera on the spot. RAF already coalesced the drawing, but not the
+   work before it — so the delta is banked and spent once, on the next frame. */
+var wheelDelta=0,wheelX=0,wheelY=0,wheelPending=false;
+function flushWheel(){
+  wheelPending=false;
+  if(!wheelDelta)return;
+  var d=wheelDelta;wheelDelta=0;
+  zoomAt(wheelX,wheelY,Math.exp(-d*0.0022));
+}
 stage.addEventListener('wheel',function(e){
   e.preventDefault();killHint();anim=null;
-  var r=stage.getBoundingClientRect();
-  var d=e.deltaMode===1?e.deltaY*16:e.deltaY;
-  zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-d*0.0022));
+  var r=stageRect();
+  wheelX=e.clientX-r.left;wheelY=e.clientY-r.top;
+  wheelDelta+=e.deltaMode===1?e.deltaY*16:e.deltaY;
+  if(!wheelPending){wheelPending=true;requestAnimationFrame(flushWheel)}
 },{passive:false});
 stage.addEventListener('dblclick',function(e){
-  var r=stage.getBoundingClientRect();
+  var r=stageRect();
   var ns=Math.max(MINS,Math.min(MAXS,V.s*2.2));
   var wx=xOfS(e.clientX-r.left),wy=yOfS(e.clientY-r.top);
   flyTo({cx:wx,cy:wy,s:ns},420);
@@ -2806,15 +3012,18 @@ function portraitPts(p){
   return portraitNear(p,2600);
 }
 function portraitNear(p,R){
-  var out=[],i,dLat=R/110574,dLng=R/(110574*Math.cos(p.lat*D2R));
-  var y0=my(p.lat-dLat),y1=my(p.lat+dLat);
-  var ci0=Math.floor((p.lng-dLng)/CELL),ci1=Math.floor((p.lng+dLng)/CELL);
-  var cj0=Math.floor(y0/CELL),cj1=Math.floor(y1/CELL);
+  var out=[],dLat=R/110574,dLng=R/(110574*Math.cos(p.lat*D2R));
+  var x0=p.lng-dLng,x1=p.lng+dLng,y0=my(p.lat-dLat),y1=my(p.lat+dLat);
+  /* the same index the cull uses, at whichever level frames a 260m-2.6km box in a
+     few cells. No PZ cut here — a portrait draws everything the map knows. */
+  var IXL=IX[ixLevel(x0,x1,y0,y1)],cell=IXL.cell;
+  var ci0=Math.floor(x0/cell),ci1=Math.floor(x1/cell);
+  var cj0=Math.floor(y0/cell),cj1=Math.floor(y1/cell);
   for(var ci=ci0;ci<=ci1;ci++)for(var cj=cj0;cj<=cj1;cj++){
-    var cell=GRID[ci+'|'+cj];if(!cell)continue;
-    for(i=0;i<cell.length;i++){
-      var k=cell[i];
-      if(PX[k]<p.lng-dLng||PX[k]>p.lng+dLng||PY[k]<y0||PY[k]>y1)continue;
+    var sl=IXL.slot.get(ixKey(ci,cj));if(sl===undefined)continue;
+    for(var q=IXL.start[sl],qe=IXL.start[sl+1];q<qe;q++){
+      var k=IXL.order[q];
+      if(PX[k]<x0||PX[k]>x1||PY[k]<y0||PY[k]>y1)continue;
       out.push(k);
     }
   }
@@ -2977,13 +3186,20 @@ function normDays(){
   }
   dayBreaks=out.sort(function(a,b){return a-b});
 }
+/* Memoised on the trip and its day breaks. The route line calls this every overlay
+   frame — thirty times a second for as long as a trip is on screen — to rebuild the
+   same nested arrays from two lists that change only when the user edits them. */
+var TDC=null,TDKey='';
 function tripDays(){
+  var key=trip.join(',')+'|'+dayBreaks.join(',');
+  if(TDC&&TDKey===key)return TDC;
   var out=[],cur=[];
   for(var i=0;i<trip.length;i++){
     if(i>0&&dayBreaks.indexOf(i)>=0){out.push(cur);cur=[]}
     cur.push(i);
   }
   if(cur.length)out.push(cur);
+  TDKey=key;TDC=out;
   return out;
 }
 /* Street distance, not crow-flies. 1.3 is the usual detour factor for a dense
@@ -3780,7 +3996,10 @@ document.getElementById('sharebtn').onclick=shareSheet;
         u_fit:ps.ShaderFitOptions.none,u_scale:1,u_rotation:0,
         u_offsetX:0,u_offsetY:0,u_originX:.5,u_originY:.5,
         u_worldWidth:0,u_worldHeight:0
-      },undefined,0,0);
+      /* speed 0, frame 0, and minPixelRatio DPR_CAP — the shader defaults to 2 and
+         would otherwise keep its own full-resolution surface under two canvases that
+         no longer have one. It draws once, so this is backing store, not draw cost. */
+      },undefined,0,0,DPR_CAP);
       grain.classList.add('off');       /* shader is up; drop the tile so they don't stack */
     }catch(e){fallbackGrain()}
   }
@@ -3792,7 +4011,15 @@ document.getElementById('sharebtn').onclick=shareSheet;
 })();
 
 /* ---- boot ---- */
-window.addEventListener('resize',function(){resize();syncChrome()});
+/* Every resize event reallocated ~40MB of backing store and re-ran the shader's own
+   ResizeObserver. Dragging a window edge fires dozens a second; one trailing call
+   per frame is all any of them can show. */
+var rsz=0;
+window.addEventListener('resize',function(){
+  SR=null;
+  if(rsz)return;
+  rsz=requestAnimationFrame(function(){rsz=0;resize();syncChrome()});
+});
 readTheme();resize();syncChrome();
 shared=readFragment();
 if(!shared&&!loadMine()){
