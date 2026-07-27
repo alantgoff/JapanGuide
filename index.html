@@ -35,7 +35,11 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body
 /* 56 pixels, parked on the selected marker — not a third full-screen layer. An
    empty full-screen canvas still costs the compositor several milliseconds on
    every frame of a drag just by existing in the stack. */
-#fx{inset:auto;left:0;top:0;width:56px;height:56px;pointer-events:none;display:none;will-change:transform}
+/* #stage canvas above is id+type and outranks a bare #fx, which stretched this to
+   the full window and then translated the stretched copy — the pulse ended up a
+   giant ring in the corner. Matched on both so it wins. */
+#stage canvas#fx{inset:auto;left:0;top:0;width:56px;height:56px;
+  pointer-events:none;display:none;will-change:transform}
 #paper{position:absolute;inset:0;z-index:0;pointer-events:none;mix-blend-mode:multiply;opacity:.5}
 #paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #grain{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:.55;mix-blend-mode:multiply}
@@ -63,7 +67,18 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 ::selection{background:var(--shu);color:var(--panel-solid)}
 
 /* ---- masthead ---- */
-#masthead{top:20px;left:20px;display:flex;gap:16px;padding:20px 22px 18px;max-width:330px}
+#masthead{top:20px;left:20px;display:flex;gap:16px;padding:20px 22px 18px;max-width:330px;
+  transition:padding .22s cubic-bezier(.2,.8,.2,1)}
+/* Collapsed it is just the title and the toggle — the card is the biggest thing on
+   the screen and it has nothing to say once you are actually looking at the map. */
+#masthead.folded{padding:11px 14px 10px;max-width:none;width:auto}
+#masthead.folded .mh-note,#masthead.folded .mh-acts,#masthead.folded .mh-side,
+#masthead.folded .eyebrow{display:none}
+#masthead.folded h1{margin:0;font-size:15px;line-height:1.1;letter-spacing:.06em;white-space:nowrap}
+#mhfold{position:absolute;top:10px;right:10px;width:22px;height:22px;display:grid;place-items:center;
+  color:var(--ink-faint);font-size:12px;line-height:1;border-radius:2px;transition:color .2s}
+#mhfold:hover{color:var(--shu)}
+#masthead.folded #mhfold{position:static;margin-left:10px}
 .mh-main{min-width:0}
 #masthead h1{margin:7px 0 0;font-family:var(--f-disp);font-size:30px;line-height:1.06;letter-spacing:.02em;
   font-weight:400;text-wrap:balance}
@@ -119,6 +134,12 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .fchip:hover{color:var(--ink);background:rgba(34,31,27,.04)}
 .fchip[aria-pressed="false"]{color:var(--ink-faint);opacity:.42}
 .fchip svg{width:11px;height:11px;flex:none;overflow:visible}
+/* All / none. Set apart from the categories by a heavier rule, because it acts on
+   them rather than being one of them. */
+#fall{padding:10px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.13em;font-weight:600;
+  color:var(--ink-faint);border-right:1px solid var(--line-strong);white-space:nowrap;
+  transition:color .2s,background .2s}
+#fall:hover{color:var(--shu);background:rgba(34,31,27,.04)}
 
 /* ---- readout ---- */
 #readout{bottom:20px;left:20px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;color:var(--ink-faint)}
@@ -139,7 +160,10 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #nav #nnext{border-bottom:1px solid var(--line-strong)}
 
 /* ---- detail ---- */
-#detail{top:20px;right:20px;width:322px;max-height:calc(100vh - 40px);overflow-y:auto;padding:0;display:none;
+/* Stops above the nav stack rather than running the full height of the window:
+   #nav is five 38px buttons at bottom:20, so the bottom 210px of this column
+   belongs to it. The panel scrolls internally, so nothing is lost. */
+#detail{top:20px;right:20px;width:322px;max-height:calc(100vh - 252px);overflow-y:auto;padding:0;display:none;
   transform:translateX(6px);opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s}
 #detail.open{display:block;transform:none;opacity:1}
 #detail .hd{padding:20px 22px 17px;border-bottom:1px solid var(--line);position:relative}
@@ -235,8 +259,15 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .tgroup .dsum{font-size:9px;color:var(--ink-faint);white-space:nowrap}
 .tgroup:hover .eyebrow{color:var(--ink)}
 .tgroup:hover .dsum{color:var(--ink-dim)}
-.titem{display:flex;align-items:center;padding:0 10px 0 16px;width:100%;font-size:12px}
+.titem{display:flex;align-items:center;padding:0 10px 0 16px;width:100%;font-size:12px;cursor:grab}
 .titem:hover{background:var(--shu-wash)}
+/* Dragging a stop into place. The arrows stay — they are the keyboard and touch
+   route to the same thing — but ordering a day is a spatial job and pushing a row
+   up four places one press at a time is not how anyone thinks about it. */
+.titem.dragging{opacity:.35;cursor:grabbing}
+.titem.over-top{box-shadow:inset 0 2px 0 var(--shu)}
+.titem.over-bot{box-shadow:inset 0 -2px 0 var(--shu)}
+#trip.dragging .titem:hover{background:none}
 .tsel{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;padding:6px 0;font-size:12px}
 .titem .idx{font-family:var(--f-mono);font-size:9.5px;color:var(--shu);width:15px;flex:none;
   font-variant-numeric:tabular-nums;align-self:flex-start;padding-top:2px}
@@ -375,6 +406,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 <div id="vig" aria-hidden="true"></div>
 
 <header class="panel" id="masthead">
+  <button id="mhfold" type="button" title="Collapse" aria-label="Collapse the title card" aria-expanded="true">–</button>
   <div class="mh-main">
     <p class="eyebrow" id="gsub">A guide to Japan</p>
     <h1 id="gtitle">Japan<br>Survey</h1>
@@ -2820,6 +2852,7 @@ stage.addEventListener('pointermove',function(e){
   if(drag){
     var dx=e.clientX-drag.x,dy=e.clientY-drag.y;
     moved=Math.max(moved,Math.abs(dx)+Math.abs(dy));
+    if(moved>8)autoFold();
     V.cx=drag.cx-dx/V.s;V.cy=drag.cy+dy/V.s;
     invalidate();
     return;
@@ -2852,19 +2885,39 @@ stage.addEventListener('pointerup',endPointer);
 stage.addEventListener('pointercancel',endPointer);
 /* A trackpad emits around a hundred wheel events a second and each one used to
    move the camera on the spot. RAF already coalesced the drawing, but not the
-   work before it — so the delta is banked and spent once, on the next frame. */
-var wheelDelta=0,wheelX=0,wheelY=0,wheelPending=false;
+   work before it — so the delta is banked and spent once, on the next frame.
+
+   Two fingers on a trackpad pan; pinch and a mouse wheel zoom. Telling them apart
+   is a heuristic because the platform does not say: a browser reports a pinch as
+   wheel+ctrlKey, and a real mouse wheel arrives as a big whole-number deltaY with
+   no horizontal component, while a two-finger scroll comes in small, often
+   fractional, and usually with some deltaX. Getting it wrong is cheap in both
+   directions — the gesture just does the other thing — so it is biased toward
+   zoom, which is what this map did before and what a mouse expects. */
+var wheelDelta=0,wheelPanX=0,wheelPanY=0,wheelX=0,wheelY=0,wheelPending=false;
+function looksLikeTrackpad(e){
+  if(e.deltaMode!==0)return false;                 /* line/page units are a wheel */
+  if(e.deltaX!==0)return true;                     /* a wheel has no sideways axis */
+  if(Math.abs(e.deltaY)<8)return true;             /* wheels arrive in big steps */
+  return e.deltaY!==Math.trunc(e.deltaY);          /* fractional means momentum */
+}
 function flushWheel(){
   wheelPending=false;
-  if(!wheelDelta)return;
-  var d=wheelDelta;wheelDelta=0;
-  zoomAt(wheelX,wheelY,Math.exp(-d*0.0022));
+  if(wheelPanX||wheelPanY){
+    V.cx+=wheelPanX/V.s;V.cy-=wheelPanY/V.s;
+    wheelPanX=wheelPanY=0;invalidate();autoFold();
+  }
+  if(wheelDelta){
+    var d=wheelDelta;wheelDelta=0;
+    zoomAt(wheelX,wheelY,Math.exp(-d*0.0022));
+  }
 }
 stage.addEventListener('wheel',function(e){
   e.preventDefault();killHint();anim=null;
   var r=stageRect();
   wheelX=e.clientX-r.left;wheelY=e.clientY-r.top;
-  wheelDelta+=e.deltaMode===1?e.deltaY*16:e.deltaY;
+  if(!e.ctrlKey&&looksLikeTrackpad(e)){wheelPanX+=e.deltaX;wheelPanY+=e.deltaY}
+  else wheelDelta+=e.deltaMode===1?e.deltaY*16:e.deltaY;
   if(!wheelPending){wheelPending=true;requestAnimationFrame(flushWheel)}
 },{passive:false});
 stage.addEventListener('dblclick',function(e){
@@ -3307,7 +3360,7 @@ function renderTrip(){
     stops.forEach(function(st,k){
       var ti=st.i,p=st.p,id=trip[ti];
       var opensDay=k===0&&di>0;
-      h+='<div class="titem'+(p.mine?' mine':'')+'">'+
+      h+='<div class="titem'+(p.mine?' mine':'')+'" draggable="true" data-i="'+ti+'">'+
          '<button class="tsel" type="button" data-id="'+esc(id)+'">'+
            '<span class="idx">'+(ti+1)+'</span>'+
            '<span class="nm">'+esc(p.name)+
@@ -3342,6 +3395,57 @@ function renderTrip(){
   });
   Array.prototype.forEach.call(list.querySelectorAll('[data-fit]'),function(b){
     b.onclick=function(){fitDay(+b.dataset.fit)};
+  });
+  wireTripDrag(list);
+}
+
+/* Move a stop to an arbitrary position. moveTrip's one-step version leaves the day
+   breaks where they are so that dragging a stop past one moves it into that day;
+   the same rule holds here, which is what makes dropping a stop under a day
+   heading put it in that day. */
+function moveTripTo(from,to){
+  if(from<0||from>=trip.length||to===from||to===from+1)return;
+  var id=trip.splice(from,1)[0];
+  if(to>from)to--;
+  trip.splice(Math.max(0,Math.min(trip.length,to)),0,id);
+  saveTrip();renderTrip();needOver=true;
+}
+function wireTripDrag(list){
+  var from=-1,panel=document.getElementById('trip');
+  function clear(){
+    Array.prototype.forEach.call(list.querySelectorAll('.titem'),function(r){
+      r.classList.remove('over-top','over-bot','dragging')});
+    panel.classList.remove('dragging');
+  }
+  Array.prototype.forEach.call(list.querySelectorAll('.titem'),function(row){
+    row.addEventListener('dragstart',function(e){
+      from=+row.dataset.i;row.classList.add('dragging');panel.classList.add('dragging');
+      /* Firefox will not start a drag without payload, and text/plain is the one
+         type every browser allows you to set here. */
+      try{e.dataTransfer.setData('text/plain',String(from));e.dataTransfer.effectAllowed='move'}catch(err){}
+    });
+    row.addEventListener('dragend',clear);
+    row.addEventListener('dragover',function(e){
+      if(from<0)return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      var r=row.getBoundingClientRect(),lower=e.clientY>r.top+r.height/2;
+      row.classList.toggle('over-bot',lower);
+      row.classList.toggle('over-top',!lower);
+    });
+    row.addEventListener('dragleave',function(){row.classList.remove('over-top','over-bot')});
+    row.addEventListener('drop',function(e){
+      if(from<0)return;
+      e.preventDefault();e.stopPropagation();
+      var r=row.getBoundingClientRect(),to=+row.dataset.i+(e.clientY>r.top+r.height/2?1:0);
+      var f=from;from=-1;clear();moveTripTo(f,to);
+    });
+  });
+  /* Dropping below the last row appends rather than doing nothing. */
+  list.addEventListener('dragover',function(e){if(from>=0)e.preventDefault()});
+  list.addEventListener('drop',function(e){
+    if(from<0)return;
+    e.preventDefault();
+    var f=from;from=-1;clear();moveTripTo(f,trip.length);
   });
 }
 function fitDay(di){
@@ -3390,6 +3494,27 @@ function setRegionChip(id){
 /* ---- filters ---- */
 (function buildFilters(){
   var wrap=document.getElementById('legend');
+  /* One control for all of them, because turning six categories off to look at the
+     seventh took six clicks and turning them back on took six more. */
+  var all=document.createElement('button');
+  all.id='fall';all.type='button';
+  wrap.appendChild(all);
+  function anyOn(){for(var c in CATS)if(filters[c])return true;return false}
+  function syncAll(){
+    var on=anyOn();
+    all.textContent=on?'None':'All';
+    all.title=on?'Turn every kind off':'Turn every kind back on';
+    all.setAttribute('aria-label',all.title);
+  }
+  window.__syncAllChip=syncAll;
+  all.onclick=function(){
+    var want=!anyOn();
+    Array.prototype.forEach.call(wrap.querySelectorAll('.fchip'),function(b){
+      filters[b.dataset.c]=want;b.setAttribute('aria-pressed',want?'true':'false');
+    });
+    if(sel&&byId[sel]&&!filters[byId[sel].cat])closeDetail();
+    TOURC={};needOver=true;syncAll();
+  };
   Object.keys(CATS).forEach(function(c){
     var b=document.createElement('button');
     b.className='fchip';b.type='button';b.dataset.c=c;b.setAttribute('aria-pressed','true');
@@ -3399,10 +3524,11 @@ function setRegionChip(id){
       filters[c]=!filters[c];
       b.setAttribute('aria-pressed',filters[c]?'true':'false');
       if(sel&&byId[sel]&&!filters[byId[sel].cat])closeDetail();
-      needOver=true;
+      needOver=true;syncAll();
     };
     wrap.appendChild(b);
   });
+  syncAll();
 })();
 
 /* ---- search ---- */
@@ -3477,6 +3603,43 @@ function syncChrome(){
   document.getElementById('tripclose').style.display=wide?'none':'';
   if(wide)document.getElementById('trip').classList.remove('open');
 }
+
+/* ---- the title card folds away ----
+   It is the biggest thing on the screen and it has already said what it has to say
+   by the time you are looking at the map, so it folds to its title and remembers
+   that you folded it. It also folds itself the first time you drag: wanting to move
+   the map is the clearest possible signal that you are done reading the introduction.
+   Only the first time — after that it is yours to open and leave open. */
+var mhFolded=false,mhAuto=false,mhTitle=null;
+function setFold(f,remember){
+  mhFolded=f;
+  var el=document.getElementById('masthead'),b=document.getElementById('mhfold');
+  el.classList.toggle('folded',f);
+  /* The title is two lines with a <br> between them. Hiding the break in CSS runs
+     the words together — Japan Survey became JapanSurvey — and CSS has no way to
+     put a space where an element used to be. Done here so it also holds for a
+     title the reader has renamed. */
+  var t=document.getElementById('gtitle');
+  if(t){
+    if(f){if(mhTitle===null)mhTitle=t.innerHTML;t.textContent=mhTitle.replace(/<br\s*\/?>/gi,' ').replace(/\s+/g,' ').trim()}
+    else if(mhTitle!==null){t.innerHTML=mhTitle;mhTitle=null}
+  }
+  b.textContent=f?'+':'–';
+  b.title=f?'Expand':'Collapse';
+  b.setAttribute('aria-label',f?'Expand the title card':'Collapse the title card');
+  b.setAttribute('aria-expanded',f?'false':'true');
+  if(remember){try{localStorage.setItem('japan-survey-fold',f?'1':'0')}catch(e){}}
+}
+function autoFold(){
+  if(mhAuto||mhFolded)return;
+  mhAuto=true;setFold(true,false);
+}
+document.getElementById('mhfold').onclick=function(){mhAuto=true;setFold(!mhFolded,true)};
+(function(){
+  var v=null;try{v=localStorage.getItem('japan-survey-fold')}catch(e){}
+  if(v==='1'){mhAuto=true;setFold(true,false)}
+  else if(v==='0')mhAuto=true;
+})();
 
 /* ================================================================
    YOUR LAYER — the places you add, the notes you write, the guide

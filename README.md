@@ -20,14 +20,16 @@ The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `
 
 | | |
 |---|---|
-| **Move around** | Drag to pan, scroll or pinch to zoom, double-click to zoom in. Arrow keys and `+` / `−` also work. |
+| **Move around** | Drag to pan, or scroll two fingers on a trackpad without pressing anything. Pinch or a mouse wheel zooms, double-click zooms in. Arrow keys and `+` / `−` also work. |
+| **Clear the deck** | The title card folds to its name with the − in its corner, and folds itself the first time you drag the map — wanting to move it is a good sign you have finished reading. It stays how you leave it. |
 | **Read a place** | Click any mark for what it is, why it's worth going, and a practical note — opening hours, the hour that beats the crowds, whether it's cash-only. |
 | **Search** | Takes what you'd actually type: `asakusa`, `golden pavilion`, `deer`, `glico`, `black eggs`, `東大寺`. Whole-word matches rank first, so `uji` finds Byōdō-in rather than every Fuji. |
 | **Jump** | Region buttons fly between Tokyo, Fuji & Hakone, Kyoto, Nara, Osaka, and the whole country. |
+| **Filter** | Chips along the bottom turn each kind of place on and off, and *None* / *All* does the lot in one press — the quick way to look at nothing but the temples, or nothing but where to eat. |
 | **Zoom into a district** | Keep going past the city marks and the cloud resolves: the Kamo between its banks, the Heian grid of blocks, Nishiki's five blocks of stalls, the moat around Nijō, the torii climbing Fushimi. Sixty-six places are drawn as their own shape rather than as a dot, and past about z16 they stand up — eaves, columns, a hipped roof, Kiyomizu's stage on its stilts, Sensō-ji's pagoda. |
 | **Look at a place** | Opening a mark draws its picture: the same points seen from the south-east and low, instead of from straight overhead. Nothing is fetched and nothing is invented — if the map doesn't know a thing, the picture can't show it either. |
 | **Tour a city** | `‹ ›` at the top of the zoom stack — or in the panel, or `[` and `]` — step through everything in the region you're looking at. Press `›` on a cold map and it opens the first stop and narrows to that city. The order is a walk: a nearest-neighbour chain from the region's most iconic place, which is roughly half the distance of visiting them best-first. Each stop flies to the scale that place needs — a 4.5m alley and a 700m park don't share one — so the drawing arrives already legible rather than as a dot you have to zoom into. Respects the category filters, so turning restaurants off keeps them out of the tour. |
-| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Reorder with ↑ ↓, split into days with 日, and each stop shows how long the walk from the one above it takes. Press a day's heading to frame that day on the map — the quickest way to see whether it hangs together or has you crossing the city twice. Saved in the browser. |
+| **Build an itinerary** | *Add to trip* fills a mark in, numbers it, and threads a dashed line between stops. Drag stops into the order you'll walk them — or use ↑ ↓, which is also the keyboard and touch route — split into days with 日, and each stop shows how long the walk from the one above it takes. Press a day's heading to frame that day on the map — the quickest way to see whether it hangs together or has you crossing the city twice. Saved in the browser. |
 
 ## Adding your own places
 
