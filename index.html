@@ -191,7 +191,14 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .tag{display:inline-block;text-transform:uppercase;letter-spacing:.14em;font-size:8.5px;padding:3px 7px;
   border:1px solid var(--line-strong);color:var(--ink-faint);border-radius:2px;font-weight:600}
 .tag.mine{border-color:var(--shu);color:var(--shu)}
-#detail .acts{display:flex;gap:7px}
+#detail .acts{display:flex;gap:7px;flex-wrap:wrap}
+/* The photo link is an anchor, not a button, because it goes somewhere — middle
+   click and copy-link have to work. Styled as one of the actions all the same. */
+#detail .acts a{flex:1;padding:10px;border:1px solid var(--line-strong);text-transform:uppercase;
+  letter-spacing:.13em;font-size:9.5px;font-weight:600;border-radius:2px;text-align:center;
+  color:var(--ink-dim);text-decoration:none;transition:background .2s,border-color .2s,color .2s}
+#detail .acts a:hover{color:var(--ink);border-color:var(--ink)}
+#detail .acts .wide{flex-basis:100%}
 #detail .acts button{flex:1;padding:10px;border:1px solid var(--line-strong);text-transform:uppercase;
   letter-spacing:.13em;font-size:9.5px;font-weight:600;border-radius:2px;transition:background .2s,border-color .2s,color .2s}
 #addbtn{background:var(--shu);border-color:var(--shu)!important;color:var(--panel-solid)!important}
@@ -2191,7 +2198,10 @@ var V={cx:mx(137.6),cy:my(38.2),s:52};
    guide is actually for. */
 var MINS=26,MAXS=110000;
 var sel=null,hover=null,activeRegion='route',filters={},trip=[],dayBreaks=[],anim=null;
-function regionPad(id){return id==='all'?.16:id==='route'?.07:.30}
+/* 'all' is the opening view now, so it is padded to sit inside the chrome rather
+   than to the window — .16 left the country small in the middle of a lot of
+   nothing. */
+function regionPad(id){return id==='all'?.06:id==='route'?.07:.30}
 for(var c in CATS)filters[c]=true;
 
 /* ---- palette, read from the stylesheet ---- */
@@ -2940,11 +2950,17 @@ stage.addEventListener('wheel',function(e){
   else wheelDelta+=e.deltaMode===1?e.deltaY*16:e.deltaY;
   if(!wheelPending){wheelPending=true;requestAnimationFrame(flushWheel)}
 },{passive:false});
+/* How much of the window a place takes when you ask for it by name. */
+var DBL_FILL=.88;
 stage.addEventListener('dblclick',function(e){
-  var r=stageRect();
+  var r=stageRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+  /* On a place — its mark or its name — go straight to it rather than stepping the
+     zoom by a factor and landing wherever that happens to be. Double-clicking a
+     thing is asking for that thing, so it is centred and filled to the window. */
+  var h=placing?null:hit(px,py);
+  if(h!==null){killHint();select(h,true,DBL_FILL);return}
   var ns=Math.max(MINS,Math.min(MAXS,V.s*2.2));
-  var wx=xOfS(e.clientX-r.left),wy=yOfS(e.clientY-r.top);
-  flyTo({cx:wx,cy:wy,s:ns},420);
+  flyTo({cx:xOfS(px),cy:yOfS(py),s:ns},420);
 });
 window.addEventListener('keydown',function(e){
   if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
@@ -2969,10 +2985,16 @@ window.addEventListener('keydown',function(e){
    one compromise: fit the drawing into the frame, and if the tallest thing on it
    would still be a couple of pixels, come in further — but never so far that the
    drawing stops fitting. */
-function revealScale(p){
+/* fill is how much of the short side of the window the drawing should take up. The
+   tour steps at .62, which leaves the place sitting in its surroundings — you are
+   passing through, and the ground around it is part of what you came to see. Asking
+   for a place directly, by double-clicking it, is a different question, so that goes
+   in to .88 and the place is nearly all you get. */
+function revealScale(p,fill){
+  fill=fill||.62;
   var a=PORSITE[p.name];
-  if(!a||!a.r)return 26000;                    /* no authored form: district zoom */
-  var fit=Math.min(W,H)*.62*91187/(2*Math.max(18,a.r));
+  if(!a||!a.r)return 26000*(fill/.62);         /* no authored form: district zoom */
+  var fit=Math.min(W,H)*fill*91187/(2*Math.max(18,a.r));
   var lift=a.h>1?7*90578/a.h:0;
   return Math.max(9000,Math.min(MAXS,Math.max(fit,Math.min(lift,fit*2))));
 }
@@ -3024,12 +3046,12 @@ function tourGo(dir){
   select(L[i].id,true);
 }
 
-function select(id,fly){
+function select(id,fly,fill){
   var p=byId[id];if(!p)return;
   sel=id;needOver=true;
   if(fopen)closeForm();
   /* Land where the drawing reads, not merely where the mark is. */
-  if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p)},700);
+  if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p,fill)},700);
   /* The chip moves first: the panel's tour counter reads off the region's walk, and
      rendering before the move counted this place against the one you came from. */
   setRegionChip(p.region);
@@ -3051,6 +3073,13 @@ function glyphSvg(cat,color){
    (form fields, data-id), and a shared link is somebody else's input. */
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+/* Google Images for a place. Japanese first when we have it: 清水寺 returns the
+   temple, Kiyomizu-dera returns the temple plus a lot of other people's trips. */
+function imageSearch(p){
+  var q=(p.ja?p.ja+' ':'')+p.name;
+  if(!p.ja)q+=' Japan';
+  return 'https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q);
+}
 function regionName(id){
   for(var i=0;i<REGIONS.length;i++)if(REGIONS[i].id===id)return REGIONS[i].name;
   return id==='elsewhere'?'Elsewhere':id;
@@ -3193,6 +3222,14 @@ function renderDetail(p){
     '<div class="acts">'+
       '<button id="addbtn" class="'+(inTrip?'in':'')+'">'+(inTrip?'✓ In trip':'Add to trip')+'</button>'+
       '<button id="cenbtn" class="ghost">Centre</button>'+
+      /* What the place actually looks like. The drawing beside it is the map's own
+         points and is honest about knowing where a thing is and not what it looks
+         like; this is the other half, and it is a link the reader follows rather
+         than anything this page loads — nothing is fetched here either. The
+         Japanese name goes in the query when there is one, because it finds the
+         place itself rather than everyone else's holiday photographs. */
+      '<a class="wide" href="'+esc(imageSearch(p))+'" target="_blank" rel="noopener noreferrer"'+
+        ' title="Photographs of '+esc(p.name)+' on Google Images — opens in a new tab">Photos</a>'+
     '</div>'+
     (function(){
       var L=tourList(),n=-1;
@@ -4210,7 +4247,12 @@ if(!shared&&!loadMine()){
   TIPS=freshTips();rebuildPlaces();loadTrip();
 }
 applyGuide();
-V=fit(REGIONS[0].box,regionPad('route'));
+/* Open on the whole country. The corridor view put all five destinations on the
+   screen at once, which is the useful frame once you know what you are looking at —
+   but it is not what this is. It is a picture of Japan, and the first thing it
+   should do is be one; the region row is right there for the corridor. */
+V=fit(REGIONS[6].box,regionPad('all'));
+setRegionChip('all');
 renderTrip();updateReadout();
 if(shared)setTimeout(welcomeSheet,260);
 requestAnimationFrame(loop);
