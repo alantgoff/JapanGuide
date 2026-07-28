@@ -3543,7 +3543,25 @@ function setRegionChip(id){
     b.className='rchip';b.dataset.r=rg.id;b.type='button';
     b.setAttribute('aria-pressed',rg.id==='route'?'true':'false');
     b.innerHTML=esc(rg.name)+'<small class="ja">'+esc(rg.ja)+'</small>';
-    b.onclick=function(){setRegionChip(rg.id);flyTo(fit(rg.box,regionPad(rg.id)),760);killHint()};
+    b.onclick=function(){
+      setRegionChip(rg.id);
+      flyTo(fit(rg.box,regionPad(rg.id)),760);
+      /* Take the open card to the new city with you. Leaving a Tokyo place on screen
+         while the map flies to Kyoto reads as a bug — the panel is the caption for
+         what you are looking at, and you have just changed what that is. It lands on
+         the first stop of that city's walk, which is its most iconic place, so the
+         card answers 'what is Kyoto' rather than showing whatever happens to be
+         nearest the middle.
+         Golden Route and All Japan are not cities and contain wherever you already
+         were, so they leave the card alone. That is also what keeps this simple:
+         select() narrows the chip to the place's own region, which for a wide region
+         would undo the click that got here. */
+      if(sel&&byId[sel]&&rg.id!=='route'&&rg.id!=='all'&&byId[sel].region!==rg.id){
+        var L=tourList();
+        if(L.length)select(L[0].id,false);
+      }
+      killHint();
+    };
     wrap.appendChild(b);
   });
 })();
