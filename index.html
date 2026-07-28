@@ -163,9 +163,18 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 /* Stops above the nav stack rather than running the full height of the window:
    #nav is five 38px buttons at bottom:20, so the bottom 210px of this column
    belongs to it. The panel scrolls internally, so nothing is lost. */
-#detail{top:20px;right:20px;width:322px;max-height:calc(100vh - 252px);overflow-y:auto;padding:0;display:none;
-  transform:translateX(6px);opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s}
-#detail.open{display:block;transform:none;opacity:1}
+/* The card floats next to whatever you opened rather than parking on the right edge.
+   Positioned by transform from left:0/top:0, because this is set every frame while
+   the map moves and transform is the only property that costs nothing to change.
+   That is also why the entrance is a fade and no longer a slide: a transition on
+   transform would fight the per-frame updates and the card would lag behind its own
+   marker. */
+/* Capped well under the window height on purpose: a card as tall as the screen has
+   nowhere to go and will cover something whatever you do with it. Short enough to
+   dodge, and it scrolls. */
+#detail{left:0;top:0;width:322px;max-height:min(calc(100vh - 28px),596px);overflow-y:auto;padding:0;display:none;
+  opacity:0;transition:opacity .22s;will-change:transform}
+#detail.open{display:block;opacity:1}
 #detail .hd{padding:20px 22px 17px;border-bottom:1px solid var(--line);position:relative}
 #detail .cat{display:flex;align-items:center;gap:7px;margin-bottom:11px}
 #detail .cat svg{width:11px;height:11px;overflow:visible}
@@ -2240,6 +2249,7 @@ function resize(){
   W=stage.clientWidth;H=stage.clientHeight;
   [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
   fc.width=fc.height=Math.round(FXR*2*dpr);
+  dropChrome();
   bx.setTransform(dpr,0,0,dpr,0,0);ox.setTransform(dpr,0,0,dpr,0,0);fxc.setTransform(dpr,0,0,dpr,0,0);
   dirty=true;
 }
@@ -2579,6 +2589,7 @@ function renderOver(){
   }
 
   /* Marker positions first: city names are placed around them, not on top of them. */
+  CITYBOX.length=0;CITYBOX.length=CITY_LABELS.length;
   marks.length=0;
   for(var mi=0;mi<P.length;mi++){
     var mp=P[mi];
@@ -2617,6 +2628,7 @@ function renderOver(){
       ox.beginPath();ox.arc(x,y,tier===1?1.9:1.3,0,6.2832);ox.fill();
     }
     rects.push([x-sr-3,y-sr-3,(sr+3)*2,(sr+3)*2]);
+    CITYBOX[i]=[x-sr-3,y-sr-3,(sr+3)*2,(sr+3)*2];      /* the symbol, at least */
 
     var fs=tier===1?(s<95?13:15):tier===2?11.5:10;
     setFont('600 '+fs+'px '+'"Hiragino Mincho ProN","Yu Mincho",Georgia,serif');
@@ -2626,6 +2638,9 @@ function renderOver(){
     var pos=placeLabel(rects,x,y,tw,fs+(showJa?13:2));
     if(!pos)continue;
     inkLabel(tx,pos[0],pos[1],sp,tier===1?.96:tier===2?.84:.68,COL.ink);
+    /* the name counts as the city, the same way a place's name counts as the place */
+    CITYBOX[i]=[Math.min(x-sr-3,pos[0]-3),Math.min(y-sr-3,pos[1]-fs*.78-2),
+                Math.max((sr+3)*2,tw+6+(pos[0]-x)),fs+(showJa?13:0)+8];
     if(showJa){
       setFont('500 '+(fs-3)+'px "Hiragino Mincho ProN","Yu Mincho",serif');
       inkLabel(cl[1],pos[0],pos[1]+fs-1,1.5,.66,COL.inkDim);
@@ -2725,6 +2740,68 @@ function renderOver(){
   }
   ox.globalAlpha=1;
 }
+/* ---- where the card sits ----
+   Beside the thing you opened, not welded to the right edge. Four positions are
+   tried in order — right, left, below, above — and the first one that fits the
+   window and clears the other panels wins; if none does, the least bad is clamped
+   into view. Scored rather than just clamped because a card that covers the legend
+   or the zoom stack is worse than one on the other side of its marker.
+
+   The chrome boxes are cached: this runs on every frame the map moves, and reading
+   six getBoundingClientRects per frame is a layout flush per frame. */
+var CHROME=null,PANEL_GAP=20,PANEL_M=14;
+function chromeRects(){
+  if(CHROME)return CHROME;
+  CHROME=[];
+  ['masthead','topbar','legend','nav','trip','readout'].forEach(function(id){
+    var e=document.getElementById(id);
+    if(!e||getComputedStyle(e).display==='none')return;
+    var b=e.getBoundingClientRect();
+    if(b.width&&b.height)CHROME.push([b.left,b.top,b.right,b.bottom]);
+  });
+  return CHROME;
+}
+function dropChrome(){CHROME=null}
+function overlap(x,y,w,h,r){
+  var ox=Math.min(x+w,r[2])-Math.max(x,r[0]), oy=Math.min(y+h,r[3])-Math.max(y,r[1]);
+  return ox>0&&oy>0?ox*oy:0;
+}
+function panelAnchor(){
+  if(selCity!==null&&CITY_LABELS[selCity]){
+    var c=CITY_LABELS[selCity];return [sxOf(mx(c[2])),syOf(my(c[3]))];
+  }
+  if(sel&&byId[sel]){var p=byId[sel];return [sxOf(p.x),syOf(p.y)]}
+  return null;
+}
+function positionPanel(){
+  var el=document.getElementById('detail');
+  if(!el.classList.contains('open'))return;
+  if(W<=1000){el.style.transform='';return}    /* narrow screens keep the bottom sheet */
+  var a=panelAnchor();if(!a)return;
+  var pw=el.offsetWidth,ph=el.offsetHeight,rs=chromeRects();
+  /* Right and left first, each at three heights, then below and above. More places to
+     try means more chances to find one that clears the other panels outright rather
+     than settling for the least bad. */
+  var cand=[[a[0]+PANEL_GAP,    a[1]-ph*.32],[a[0]-PANEL_GAP-pw, a[1]-ph*.32],
+            [a[0]+PANEL_GAP,    a[1]-ph+40 ],[a[0]-PANEL_GAP-pw, a[1]-ph+40 ],
+            [a[0]+PANEL_GAP,    a[1]-40    ],[a[0]-PANEL_GAP-pw, a[1]-40    ],
+            [a[0]-pw/2,         a[1]+PANEL_GAP],[a[0]-pw/2,      a[1]-PANEL_GAP-ph]];
+  var best=null,bestCost=Infinity;
+  for(var i=0;i<cand.length;i++){
+    var x=cand[i][0],y=cand[i][1];
+    var cx=Math.max(PANEL_M,Math.min(W-pw-PANEL_M,x));
+    var cy=Math.max(PANEL_M,Math.min(H-ph-PANEL_M,y));
+    /* how far it had to be dragged to fit, plus what it still covers, plus a nudge
+       toward the earlier candidates so 'to the right of it' wins all else equal */
+    var cost=Math.abs(cx-x)+Math.abs(cy-y)+i*4;
+    for(var k=0;k<rs.length;k++)cost+=overlap(cx,cy,pw,ph,rs[k])/35;
+    /* never sit on top of the thing you opened */
+    cost+=overlap(cx,cy,pw,ph,[a[0]-26,a[1]-26,a[0]+26,a[1]+26])*4;
+    if(cost<bestCost){bestCost=cost;best=[cx,cy]}
+  }
+  el.style.transform='translate3d('+Math.round(best[0])+'px,'+Math.round(best[1])+'px,0)';
+}
+
 /* The selected marker's pulse, on its own layer and clearing only the rectangle it
    drew last time. The ring itself was never the cost — the cost was that drawing it
    meant clearing a full-screen canvas sitting under a multiply layer, so the
@@ -2733,13 +2810,14 @@ function renderOver(){
 var fxOn=false;
 function fxHide(){if(fxOn){fc.style.display='none';fxOn=false}}
 function renderFx(){
-  if(reduce||sel===null)return fxHide();
-  var p=byId[sel];if(!p)return fxHide();
-  var x=sxOf(p.x),y=syOf(p.y);
+  if(reduce)return fxHide();
+  var a=panelAnchor();if(!a)return fxHide();
+  var mine=selCity===null&&sel&&byId[sel]&&byId[sel].mine;
+  var x=a[0],y=a[1];
   if(x<-FXR||x>W+FXR||y<-FXR||y>H+FXR)return fxHide();
   var pulse=(phase%90)/90,rr=6.5+pulse*17;
   fxc.clearRect(0,0,FXR*2,FXR*2);
-  fxc.globalAlpha=(1-pulse)*.5;fxc.strokeStyle=p.mine?COL.shu:COL.ink;fxc.lineWidth=1.2;
+  fxc.globalAlpha=(1-pulse)*.5;fxc.strokeStyle=mine?COL.shu:COL.ink;fxc.lineWidth=1.2;
   fxc.beginPath();fxc.arc(FXR,FXR,rr,0,6.2832);fxc.stroke();
   fxc.globalAlpha=1;
   fc.style.transform='translate('+(x-FXR)+'px,'+(y-FXR)+'px)';
@@ -2756,11 +2834,11 @@ function loop(){
      by two so neither changes speed.
      Only the dash needs the big canvas now; the pulse has its own. So a selection on
      its own no longer repaints the map at all — that costs one small rectangle. */
-  if(!reduce&&(sel!==null||trip.length>1)&&(overTick^=1)){
+  if(!reduce&&(sel!==null||selCity!==null||trip.length>1)&&(overTick^=1)){
     phase+=2;fxDirty=true;
     if(trip.length>1)needOver=true;
   }
-  if(needOver){renderOver();needOver=false;fxDirty=true}
+  if(needOver){renderOver();needOver=false;fxDirty=true;positionPanel()}
   if(fxDirty){renderFx();fxDirty=false}
   requestAnimationFrame(loop);
 }
@@ -2824,6 +2902,16 @@ function haversine(a,b){
   var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*D2R)*Math.cos(b.lat*D2R)*Math.sin(dLng/2)*Math.sin(dLng/2);
   return 6371*2*Math.asin(Math.sqrt(h));
 }
+/* Cities are hit on their name and their ring, and only after the guide's own places
+   have had their chance: a place is the content, a city is the context. */
+var CITYBOX=[];
+function hitCity(px,py){
+  for(var i=0;i<CITYBOX.length;i++){
+    var b=CITYBOX[i];if(!b)continue;
+    if(px>=b[0]&&px<=b[0]+b[2]&&py>=b[1]&&py<=b[1]+b[3])return i;
+  }
+  return -1;
+}
 /* The name is the part you can actually read, so it is the part people aim at — a
    4.6px glyph was the only thing that counted before. renderOver records where each
    label ended up (it has to place them anyway) and those boxes are hit first, since
@@ -2884,7 +2972,8 @@ stage.addEventListener('pointermove',function(e){
   }
   var rb=stageRect(),hx=e.clientX-rb.left,hy=e.clientY-rb.top;
   var h=hit(hx,hy);
-  if(h!==hover){hover=h;needOver=true;stage.style.cursor=h===null?'':'pointer'}
+  if(h!==hover){hover=h;needOver=true}
+  stage.style.cursor=(h!==null||hitCity(hx,hy)>=0)?'pointer':'';
   var lat=myInv(yOfS(hy)),lng=xOfS(hx);
   if(!elRdll)elRdll=document.getElementById('rdll');
   lastLL=setText(elRdll,
@@ -2900,7 +2989,8 @@ function endPointer(e){
       if(placing){dropPin(cx2,cy2)}
       else{
         var h=hit(cx2,cy2);
-        if(h!==null)select(h,false);else closeDetail();
+        if(h!==null)select(h,false);
+        else{var ci=hitCity(cx2,cy2);if(ci>=0)citySelect(ci);else closeDetail()}
       }
     }
     drag=null;stage.classList.remove('dragging');
@@ -2959,6 +3049,13 @@ stage.addEventListener('dblclick',function(e){
      thing is asking for that thing, so it is centred and filled to the window. */
   var h=placing?null:hit(px,py);
   if(h!==null){killHint();select(h,true,DBL_FILL);return}
+  var ci=placing?-1:hitCity(px,py);
+  if(ci>=0){
+    killHint();citySelect(ci);
+    var c=CITY_LABELS[ci],d=CITY_R/111.32;
+    flyTo(fit([c[2]-d*1.3,c[3]-d,c[2]+d*1.3,c[3]+d],.05),620);
+    return;
+  }
   var ns=Math.max(MINS,Math.min(MAXS,V.s*2.2));
   flyTo({cx:xOfS(px),cy:yOfS(py),s:ns},420);
 });
@@ -3048,7 +3145,7 @@ function tourGo(dir){
 
 function select(id,fly,fill){
   var p=byId[id];if(!p)return;
-  sel=id;needOver=true;
+  sel=id;selCity=null;needOver=true;
   if(fopen)closeForm();
   /* Land where the drawing reads, not merely where the mark is. */
   if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p,fill)},700);
@@ -3056,8 +3153,82 @@ function select(id,fly,fill){
      rendering before the move counted this place against the one you came from. */
   setRegionChip(p.region);
   renderDetail(p);
+  positionPanel();
 }
-function closeDetail(){sel=null;needOver=true;document.getElementById('detail').classList.remove('open')}
+function closeDetail(){sel=null;selCity=null;needOver=true;document.getElementById('detail').classList.remove('open')}
+
+/* ---- the city card ----
+   Cities carry a name, a Japanese name and a coordinate, and nothing else — there is
+   no copy for them and writing some would be inventing, which is the one thing this
+   map does not do. So the card says what the map actually knows: what the guide has
+   near this city, how far out it is, and the way in. That turns out to be the useful
+   answer anyway, because the question you ask by clicking KYOTO is "what is here for
+   me", not "what is Kyoto". */
+var selCity=null,CITY_R=30;
+function citySelect(i){
+  var c=CITY_LABELS[i];if(!c)return;
+  selCity=i;sel=null;needOver=true;
+  if(fopen)closeForm();
+  renderCity(i);
+}
+function cityNear(i){
+  var c=CITY_LABELS[i],o={lat:c[3],lng:c[2]},out=[];
+  for(var k=0;k<P.length;k++){
+    if(filters[P[k].cat]===false)continue;
+    out.push({q:P[k],d:haversine(o,P[k])});
+  }
+  out.sort(function(a,b){return a.d-b.d});
+  return out;
+}
+function renderCity(i){
+  var c=CITY_LABELS[i],el=document.getElementById('detail');
+  var near=cityNear(i),within=near.filter(function(n){return n.d<=CITY_R});
+  var shown=(within.length?within:near.slice(0,3));
+  var reg=null;
+  for(var r=0;r<REGIONS.length;r++)
+    if(REGIONS[r].id!=='route'&&REGIONS[r].id!=='all'&&
+       c[2]>=REGIONS[r].box[0]&&c[2]<=REGIONS[r].box[2]&&
+       c[3]>=REGIONS[r].box[1]&&c[3]<=REGIONS[r].box[3]){reg=REGIONS[r];break}
+  var h='<div class="hd">'+
+    '<div class="cat"><svg viewBox="-6 -6 12 12" fill="none" stroke="var(--ink)" stroke-width="1.7">'+
+      '<circle cx="0" cy="0" r="4.2"/><circle cx="0" cy="0" r="1.4" fill="var(--ink)"/></svg>'+
+      '<span class="eyebrow">City</span></div>'+
+    '<h2>'+esc(c[0])+'</h2>'+
+    '<p class="jaline ja">'+esc(c[1])+'</p>'+
+    '<button id="close" aria-label="Close">×</button></div>'+
+    '<div class="bd">'+
+    (reg?'<div><span class="tag">'+esc(reg.name)+'</span></div>':'')+
+    '<p class="why">'+(within.length
+        ? within.length+' place'+(within.length===1?'':'s')+' in the guide within '+CITY_R+' km.'
+        : 'Nothing in the guide within '+CITY_R+' km. The nearest are below.')+'</p>'+
+    '<p class="mono" style="margin:0;color:var(--ink-faint)">'+c[3].toFixed(4)+'° N · '+c[2].toFixed(4)+'° E</p>'+
+    '<div class="acts">'+
+      '<button id="cityfit">Frame it</button>'+
+      (shown.length?'<button id="citywalk" class="ghost">Walk it</button>':'')+
+      '<a class="wide" href="'+esc('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(c[1]+' '+c[0]))+'"'+
+        ' target="_blank" rel="noopener noreferrer"'+
+        ' title="Photographs of '+esc(c[0])+' on Google Images — opens in a new tab">Photos</a>'+
+    '</div></div>'+
+    (shown.length?'<div class="near"><span class="eyebrow">'+
+      (within.length?'In the guide here':'Nearest in the guide')+'</span>'+
+      shown.slice(0,5).map(function(n){
+        return '<button class="nearrow'+(n.q.mine?' mine':'')+'" data-go="'+esc(n.q.id)+'">'+
+          '<span>'+esc(n.q.name)+'</span><span class="d">'+
+          (n.d<1?Math.round(n.d*1000)+' m':(n.d<10?n.d.toFixed(1):Math.round(n.d))+' km')+'</span></button>';
+      }).join('')+'</div>':'');
+  el.innerHTML=h;el.classList.add('open');
+  el.querySelector('#close').onclick=closeDetail;
+  el.querySelector('#cityfit').onclick=function(){
+    var d=CITY_R/111.32;
+    flyTo(fit([c[2]-d*1.3,c[3]-d,c[2]+d*1.3,c[3]+d],.05),700);
+  };
+  var wk=el.querySelector('#citywalk');
+  if(wk)wk.onclick=function(){select(shown[0].q.id,true)};
+  Array.prototype.forEach.call(el.querySelectorAll('[data-go]'),function(b){
+    b.onclick=function(){select(b.dataset.go,true)};
+  });
+  positionPanel();
+}
 function glyphSvg(cat,color){
   var g=CATS[cat].glyph,s='<svg viewBox="-6 -6 12 12" fill="none" stroke="'+color+'" stroke-width="1.7">';
   if(g==='circle')s+='<circle cx="0" cy="0" r="4.2"/>';
@@ -3687,7 +3858,7 @@ function syncChrome(){
    Only the first time — after that it is yours to open and leave open. */
 var mhFolded=false,mhAuto=false,mhTitle=null;
 function setFold(f,remember){
-  mhFolded=f;
+  mhFolded=f;dropChrome();
   var el=document.getElementById('masthead'),b=document.getElementById('mhfold');
   el.classList.toggle('folded',f);
   /* The title is two lines with a <br> between them. Hiding the break in CSS runs
