@@ -39,6 +39,8 @@ The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `
 
 Seven kinds: temples & shrines, gardens & nature, views & districts, museums & culture, markets & street food, **matcha, tea & coffee**, and **food & drink**.
 
+The tea entries are shopfronts rather than landmarks, so each one's note names the street or the station it is off: the coordinate gets you to the block and the note gets you to the door.
+
 Your places are drawn in vermilion so they read apart from the built-in route. Edit, move or delete any of them. Anything dropped well away from the five cities files under *Elsewhere* rather than being mislabelled.
 
 ## Before you go

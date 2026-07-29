@@ -516,7 +516,22 @@ var KW={
 "Oshino Hakkai":"oshino springs","Hakone Shrine":"hakone heiwa no torii moto-hakone",
 "Owakudani":"hakone black eggs sulphur ropeway","Lake Ashi":"hakone ashinoko pirate ship freepass",
 "Fuji-Q Highland":"fujiyoshida roller coaster","Shiraito Falls":"fujinomiya waterfall",
-"Hakone Open-Air Museum":"chokoku no mori sculpture hakone","Fujisan Hongu Sengen Taisha":"fujinomiya sengen"
+"Hakone Open-Air Museum":"chokoku no mori sculpture hakone","Fujisan Hongu Sengen Taisha":"fujinomiya sengen",
+"Tsuen Tea":"uji tea oldest teahouse tsuen matcha hojicha",
+"Nakamura Tokichi Honten":"uji matcha jelly nakamura tokichi tea",
+"Itohkyuemon Byodo-in":"uji matcha parfait ito kyuemon tea",
+"Mitsuboshien Kanbayashi Sannyu":"uji tea kanbayashi museum matcha",
+"Fukujuen Uji Tea Workshop":"uji matcha grind stone mill workshop tea",
+"Ippodo Tea & Kaboku Tearoom":"kyoto tea ippodo teramachi kaboku matcha sencha gyokuro",
+"Marukyu Koyamaen Nishinotoin":"kyoto matcha koyamaen tea tasting nishinotoin",
+"Gion Tsujiri":"kyoto matcha soft serve gion tsujiri parfait tea",
+"Kagizen Yoshifusa":"kyoto kuzukiri gion wagashi matcha tea sweets",
+"Fukujuen Kyoto Flagship":"kyoto tea fukujuen shijo matcha",
+"Nakamura Tokichi Kyoto Station":"kyoto station matcha jelly nakamura tokichi suvaco",
+"Suzukien Asakusa":"tokyo matcha gelato ice cream asakusa suzukien seven levels",
+"Sakurai Japanese Tea Experience":"tokyo tea aoyama sakurai roasted hojicha counter",
+"Ippodo Tea Tokyo Marunouchi":"tokyo tea ippodo kitte marunouchi matcha",
+"HIGASHIYA GINZA":"tokyo wagashi ginza higashiya tea sweets"
 };
 /* id, name, nameJa, cat, region, lat, lng, rank(1 iconic/2 major/3 notable), why, note, day? */
 var PLACES = [
@@ -593,7 +608,28 @@ var PLACES = [
 ["Fuji-Q Highland","富士急ハイランド","culture","fuji",35.4874,138.7809,3,"Record-breaking coasters with the mountain filling the horizon.","¥6,000+. Closed some Tuesdays. Book the popular rides on arrival."],
 ["Shiraito Falls","白糸の滝","nature","fuji",35.3130,138.5875,3,"A 150m-wide curtain of springwater falling straight out of the lava.","¥200. On the Fujinomiya side; pairs with Sengen Taisha."],
 ["Hakone Open-Air Museum","彫刻の森美術館","culture","fuji",35.2447,139.0500,3,"Moore and Picasso on a hillside, with a stained-glass tower to climb.","¥1,600. There is a free hot foot bath at the far end."],
-["Fujisan Hongu Sengen Taisha","富士山本宮浅間大社","temple","fuji",35.2251,138.6100,3,"Head shrine of 1,300 Fuji shrines; the summit itself is its inner sanctum.","Free. Spring-fed pond on site. Start of the Fujinomiya trail."]
+["Fujisan Hongu Sengen Taisha","富士山本宮浅間大社","temple","fuji",35.2251,138.6100,3,"Head shrine of 1,300 Fuji shrines; the summit itself is its inner sanctum.","Free. Spring-fed pond on site. Start of the Fujinomiya trail."],
+
+/* ---- tea ----
+   Uji is where the tea is grown and Kyoto is where it is sold, so the two together
+   are most of this. Every note names the street or the station it is off, because
+   these are shopfronts rather than landmarks: the coordinate gets you to the block
+   and the note gets you to the door. */
+["Tsuen Tea","通圓","matcha","kyoto",34.8925,135.8095,2,"Tea poured at the foot of Uji Bridge since 1160 — the oldest tea shop in Japan.","East end of Uji Bridge, beside Keihan Uji station. Sit in for matcha and a sweet, or take a cup away."],
+["Nakamura Tokichi Honten","中村藤吉本店","matcha","kyoto",34.8907,135.8038,2,"A Meiji tea merchant's house, and the matcha jelly that made its name.","Two minutes from JR Uji station. Take a numbered ticket on arrival — the wait at the honten runs to an hour at weekends."],
+["Itohkyuemon Byodo-in","伊藤久右衛門 平等院店","matcha","kyoto",34.8901,135.8072,3,"Matcha parfaits layered like a section drawing, on the Byodo-in approach.","On the Byodo-in omotesando. The main shop east of town is calmer if this one is queuing."],
+["Mitsuboshien Kanbayashi Sannyu","三星園上林三入","matcha","kyoto",34.8899,135.8070,3,"A tea house on the temple approach with a small tea museum upstairs.","Byodo-in omotesando. Grind-your-own matcha by arrangement."],
+["Fukujuen Uji Tea Workshop","福寿園宇治茶工房","matcha","kyoto",34.8875,135.8110,3,"Turn the stone mill yourself, then drink what comes off it.","South bank of the Uji river, upstream of the bridge. Workshops are bookable and take about an hour."],
+["Ippodo Tea & Kaboku Tearoom","一保堂茶舗 嘉木","matcha","kyoto",35.0140,135.7657,2,"Three centuries of tea on Teramachi, with a room at the back that teaches you to brew it.","Teramachi-dori just north of Nijo. They pour the first cup and leave you to make the second."],
+["Marukyu Koyamaen Nishinotoin","丸久小山園 西洞院店","matcha","kyoto",35.0079,135.7548,3,"A competition-grade tea grower's own tasting room, well off the tourist line.","Nishinotoin-dori south of Oike. Quiet on weekday mornings."],
+["Gion Tsujiri","祇園辻利","matcha","kyoto",35.0035,135.7744,2,"The Shijo tea stand that put matcha soft-serve on every Kyoto itinerary.","Shijo-dori at the Gion end. Ground floor to take away, tearoom upstairs."],
+["Kagizen Yoshifusa","鍵善良房","matcha","kyoto",35.0036,135.7757,3,"Kuzukiri cut to order and eaten cold, with thick matcha alongside.","Shijo-dori in Gion. Closed Mondays. The sweets counter at the front, the tearoom behind."],
+["Fukujuen Kyoto Flagship","福寿園京都本店","matcha","kyoto",35.0037,135.7663,3,"Seven floors of tea — shop, tearoom, kaiseki and a brewing class.","Shijo-dori at Tominokoji. The basement shop is worth it even if you skip the rest."],
+["Nakamura Tokichi Kyoto Station","中村藤吉 京都駅店","matcha","kyoto",34.9858,135.7588,3,"The Uji house's station branch — the same jelly without the trip.","In Suvaco on the west side of JR Kyoto station. Handy on the way out of town."],
+["Suzukien Asakusa","壽々喜園","matcha","tokyo",35.7160,139.7975,2,"Matcha gelato in seven strengths; the darkest is almost bitter and the point.","North of Senso-ji, off Kototoi-dori. Number seven sells out first on hot days."],
+["Sakurai Japanese Tea Experience","櫻井焙茶研究所","matcha","tokyo",35.6640,139.7128,2,"Tea roasted in front of you at a counter, served like a tasting menu.","Fifth floor of Spiral, Minami-Aoyama. Book ahead; the counter seats about eight."],
+["Ippodo Tea Tokyo Marunouchi","一保堂茶舗 東京丸の内店","matcha","tokyo",35.6794,139.7645,3,"The Kyoto house in Tokyo, with the same tearoom lesson.","In KITTE opposite Tokyo station's Marunouchi side."],
+["HIGASHIYA GINZA","ヒガシヤ ギンザ","matcha","tokyo",35.6717,139.7625,3,"A modern wagashi house where the sweet is designed around the tea.","Ginza 1-chome, second floor. Afternoon tea sets; the shop downstairs sells the sweets to take away."]
 ];
 </script>
 <script>
