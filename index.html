@@ -892,6 +892,20 @@ function blob(lng,lat,rM,n,b,z,o){
     if(o.h&&hrnd()<(o.stem||.34)){
       var tht=o.h*(.78+.44*hrnd()),zg=Math.max(bz,o.hz||zLift(tht)),st=Math.max(2,Math.round(tht/3.5));
       for(var q=1;q<=st;q++)push(blng,blat,b,zg,tht*q/st);
+      /* A crown on the stem. A bare column is a post; a wood is columns with mass on
+         top of them, and the mass is what tells you at a glance whether you are
+         looking at cedar or at a car park. Held back a step beyond the stem, so a
+         park still reads as a park at district zoom and only becomes trees when you
+         are close enough for one tree to be worth drawing. */
+      var cr=(o.crown===undefined?.42:o.crown)*tht;
+      if(cr>0.6){
+        var zc=zg*1.5,cn=Math.max(3,Math.round(cr*1.6));
+        for(var q2=0;q2<cn;q2++){
+          var ca=hrnd()*TAU,crr=cr*(.35+.65*Math.sqrt(hrnd()));
+          push(blng+Math.cos(ca)*mLat(crr)*aspect(blat), blat+Math.sin(ca)*mLat(crr),
+               b, zc, tht*(.72+.3*hrnd()));
+        }
+      }
     }
   }
 }
@@ -1013,6 +1027,19 @@ function hall(lng,lat,wm,hm,rot,b,z,o){
   var nb=Math.max(1,Math.round(wm/bp)),nd=Math.max(1,Math.round(hm/bp));
   for(i=0;i<=nb;i++){var cu=-hw+wm*i/nb;for(j=1;j<nv;j++)put(cu,-hh,zE,h0+eh*j/nv)}
   for(i=0;i<=nd;i++){var cv=-hh+hm*i/nd;for(j=1;j<nv;j++){var hj=h0+eh*j/nv;put(-hw,cv,zE,hj);put(hw,cv,zE,hj)}}
+  /* Storey bands across the same three faces the columns use. Verticals alone give a
+     building a height but not a scale — you cannot tell an eight-metre shed from an
+     eighty-metre tower until something crosses them at a storey's pitch. Later than
+     the columns, because at a distance the two would just fill the wall in. */
+  if(o.floors){
+    var fp=o.floors,nf=Math.floor(eh/fp),zF=zE*1.5;
+    var fu=Math.max(2,Math.round(wm/2.2)),fv=Math.max(2,Math.round(hm/2.2));
+    for(j=1;j<=nf;j++){
+      var fh=h0+fp*j;if(fh>=h0+eh)break;
+      for(i=0;i<=fu;i++)put(-hw+wm*i/fu,-hh,zF,fh);
+      for(i=0;i<=fv;i++){var fvv=-hh+hm*i/fv;put(-hw,fvv,zF,fh);put(hw,fvv,zF,fh)}
+    }
+  }
   /* The roof is the entire silhouette of a Japanese hall: a ridge shorter than the
      building, and four hips falling from its ends to the eave corners. */
   var rn2=Math.max(2,Math.round(wm*.5/(o.ridgeP||3.2)));
@@ -1020,6 +1047,33 @@ function hall(lng,lat,wm,hm,rot,b,z,o){
   var hn=Math.max(2,Math.round(Math.max(wm,hm)*.3/2.4));
   for(var s1=-1;s1<=1;s1+=2)for(var s2=-1;s2<=1;s2+=2)
     for(i=1;i<=hn;i++){var t=i/hn;put(s1*(wm*.25*(1-t)+hw*t),s2*hh*t,zE,h0+rh+(eh-rh)*t)}
+
+  /* Courses down the two long slopes. A ridge with four hips off it is a wireframe of
+     a roof; the courses are the roof — and on a Japanese hall the roof is most of what
+     there is to see, being half the height of the building and the whole of it from
+     above. Each course is the same interpolation the hips already walk, so the surface
+     they fill is exactly the one the hips outline: at t along the slope the roof is
+     wm*.25 wide at the ridge widening to hw at the eave, hh*t out, and falling from rh
+     to eh. They come in a step later than the elevation does — a roof reads as a solid
+     mass long before you can see it is tiled, and arriving together just makes a blur. */
+  if(o.tiles!==false&&rh>0){
+    var zR2=zE*1.6,nc=Math.max(2,Math.round(hh/1.9));
+    for(var sc=-1;sc<=1;sc+=2)for(var c=1;c<=nc;c++){
+      var tc=c/nc, hu=wm*.25*(1-tc)+hw*tc, vv=sc*hh*tc, ht=h0+rh+(eh-rh)*tc;
+      var mu=Math.max(2,Math.round(hu*2/2.1));
+      for(i=0;i<=mu;i++)put(-hu+2*hu*i/mu+hgauss()*.22, vv+hgauss()*.18, zR2, ht);
+    }
+  }
+  /* The engawa: the boarded verandah that runs round a hall at floor height, and the
+     step up to it. It is why a temple reads as raised rather than sitting on the mud. */
+  if(o.engawa){
+    var ew=o.engawa===true?1.6:o.engawa, zV=Math.max(zE,zE*1.35), eo=h0+eh*.16;
+    var ex2=Math.max(2,Math.round(wm/1.9)),ey2=Math.max(2,Math.round(hm/1.9));
+    for(i=0;i<=ex2;i++){var ue=-hw-ew+(wm+ew*2)*i/ex2;
+      put(ue,-hh-ew,zV,eo);put(ue,hh+ew,zV,eo)}
+    for(i=1;i<ey2;i++){var ve=-hh-ew+(hm+ew*2)*i/ey2;
+      put(-hw-ew,ve,zV,eo);put(hw-0+ew,ve,zV,eo)}
+  }
 }
 /* A precinct is a table of halls placed in metres east and north of one anchor.
    [eastM, northM, widthM, depthM, rotDeg, zMul?, opts?] — the whole complex moves
@@ -1309,7 +1363,7 @@ function buildSites(){
   });
 
   SITE('Arashiyama Bamboo Grove',function(lng,lat,Z){
-    blob(lng,lat,190,260,7,Z[0],{conc:.85,ea:.8,eb:1.25,h:20,hz:Z[2],stem:.9});
+    blob(lng,lat,190,260,7,Z[0],{conc:.85,ea:.8,eb:1.25,h:20,hz:Z[2],stem:.9,crown:.1});
     corridor([[135.67080,35.01560],[135.67180,35.01720],[135.67240,35.01860]],6,4,7,Z[1],{rail:2,ribs:9,ribZ:Z[2]});
   });
 
@@ -1436,6 +1490,28 @@ function temple(lng,lat,Z,o){
   o=o||{};
   var w=o.w||30,d=o.d||24,r=o.rot||0,eh=o.h||12,i;
   blob(lng,lat,o.r||110,o.n||28,7,Z[0],{conc:1.3});
+  /* The wall. A Japanese temple is a walled enclosure before it is a building — the
+     precinct is the thing you walk into — and without it the halls float in open
+     ground looking like sheds in a field. Drawn as a rounded rectangle around the
+     halls rather than the presence blob, whose radius is a halo and much too big. */
+  if(o.wall!==false){
+    var ww=(o.wallW||Math.max(w*1.9,70)),wd=(o.wallD||Math.max(d*2.4,80));
+    var ax0=aspect(lat),per=2*(ww+wd),np=Math.max(24,Math.round(per/3.4));
+    var zw=Math.max(Z[1],Z[1]*.8),wh=o.wallH===undefined?2.4:o.wallH;
+    for(i=0;i<np;i++){
+      var t=i/np*4,sx,sy;
+      if(t<1){sx=-ww/2+ww*t;sy=-wd/2}
+      else if(t<2){sx=ww/2;sy=-wd/2+wd*(t-1)}
+      else if(t<3){sx=ww/2-ww*(t-2);sy=wd/2}
+      else{sx=-ww/2;sy=wd/2-wd*(t-3)}
+      /* the gate end is left open, because that is where you come in */
+      if(sy<-wd/2+1&&Math.abs(sx)<w*.28)continue;
+      var wx=lng+mLat(sx+agauss()*.4)*ax0, wy=lat+mLat(sy+agauss()*.4);
+      push(wx,wy,7,zw,0);
+      if(wh>0){var zh2=Math.max(zw,zLift(wh)),nv2=Math.max(2,Math.round(wh/1.1));
+        for(var v3=1;v3<=nv2;v3++)push(wx,wy,7,zh2,wh*v3/nv2)}
+    }
+  }
   var rows=[[0,0,w,d,r,1,{h:eh,roof:eh*1.55,bays:3.6}],
             [0,-(d*.5+30),w*.44,10,r,1,{h:8,roof:11}]];          /* the gate */
   /* storeys, not metres: a five-storey pagoda is about 50m and 11m across, and that
@@ -1452,6 +1528,25 @@ function shrine(lng,lat,Z,o){
   o=o||{};
   var r=o.rot||0,rr=r*D2R,ax=aspect(lat),d=o.d||14;
   blob(lng,lat,o.r||120,o.n||26,7,Z[0],{conc:1.3});
+  /* Tamagaki — the paling fence round the sanctuary. A shrine is not walled the way a
+     temple is; it is fenced, and you can see through it, which is why this is a comb
+     of posts rather than a solid line. */
+  if(o.fence!==false){
+    var fw=o.fenceW||Math.max((o.w||22)*2.1,44),fd=o.fenceD||Math.max(d*3.2,42);
+    var fh=o.fenceH===undefined?1.7:o.fenceH,np=Math.max(20,Math.round(2*(fw+fd)/2.6));
+    var cs2=Math.cos(rr),sn2=Math.sin(rr);
+    for(var i=0;i<np;i++){
+      var t=i/np*4,px,py;
+      if(t<1){px=-fw/2+fw*t;py=-fd/2}
+      else if(t<2){px=fw/2;py=-fd/2+fd*(t-1)}
+      else if(t<3){px=fw/2-fw*(t-2);py=fd/2}
+      else{px=-fw/2;py=fd/2-fd*(t-3)}
+      if(py<-fd/2+1&&Math.abs(px)<(o.appW||10)*.6)continue;   /* the way in */
+      var gx=lng+mLat(px*cs2-py*sn2)*ax, gy=lat+mLat(px*sn2+py*cs2);
+      var zf=Math.max(Z[1],zLift(fh)),nv=Math.max(2,Math.round(fh/.85));
+      for(var v=1;v<=nv;v++)push(gx,gy,7,zf,fh*v/nv);
+    }
+  }
   precinct(lng,lat,[[0,0,o.w||22,d,r,1,{h:o.h||9,roof:(o.h||9)*1.7}],
                     [0,-(d*.5+26),12,8,r,1,{h:6,roof:8}]],7,Z[1]);
   var L=o.app||150;
@@ -1464,8 +1559,28 @@ function keep(lng,lat,Z,o){
   o=o||{};
   var b=o.base||14,h=o.h||30,w=o.w||24,r=o.rot||0;
   blob(lng,lat,o.r||160,24,7,Z[0],{conc:1.4});
-  precinct(lng,lat,[[0,0,w*1.4,w*1.4,r,1,{h:b,roof:b,ridge:false,solid:.3,bays:6}],
-                    [0,0,w,w,r,1.3,{h0:b,h:h,roof:h*1.2,bays:3}]],7,Z[1]);
+  precinct(lng,lat,[[0,0,w*1.4,w*1.4,r,1,{h:b,roof:b,ridge:false,solid:.3,bays:6,tiles:false}],
+                    [0,0,w,w,r,1.3,{h0:b,h:h,roof:h*1.2,bays:3,floors:o.floors||4.2}]],7,Z[1]);
+  /* The batter. A castle keep is a timber box on a stone plinth that curves outward as
+     it falls, and that curve is the single most recognisable thing about it — a
+     straight-sided base reads as an office block with a hat on. */
+  if(o.batter!==false){
+    var ax2=aspect(lat),cs3=Math.cos(r*D2R),sn3=Math.sin(r*D2R);
+    var nb2=Math.max(10,Math.round(w*1.4/2.2)),nl=Math.max(2,Math.round(b/4.5));
+    for(var e=0;e<4;e++)for(var i2=0;i2<=nb2;i2++)for(var l=0;l<=nl;l++){
+      var t2=l/nl, half=w*.7*(1+.28*(1-t2)*(1-t2)), u=-half+2*half*i2/nb2;
+      var pu,pv;
+      if(e===0){pu=u;pv=-half}else if(e===1){pu=half;pv=u}
+      else if(e===2){pu=u;pv=half}else{pu=-half;pv=u}
+      /* Only the foot and the coping are drawn solid. The map is a plan, and a
+         battered wall in plan is a set of nested rectangles — draw every course and
+         a castle becomes a bullseye. The courses between are a quarter-density hint,
+         which is enough to slope in the oblique portrait and invisible from above. */
+      if(l>0&&l<nl&&i2%4)continue;
+      push(lng+mLat(pu*cs3-pv*sn3)*ax2, lat+mLat(pu*sn3+pv*cs3), 7,
+           Math.max(Z[1],zLift(b)), b*t2);
+    }
+  }
 }
 
 /* A lattice tower is legs and a deck. The legs drawing in as they rise is the entire
@@ -1508,7 +1623,7 @@ function grove(lng,lat,Z,o){
   o=o||{};
   blob(lng,lat,o.r||300,o.n||80,7,Z[0],
        {conc:o.conc===undefined?.9:o.conc,ea:o.ea||1,eb:o.eb||1,rot:o.rot||0,
-        stem:o.stem,h:o.h||16,hz:Z[2]});
+        stem:o.stem,crown:o.crown,h:o.h||16,hz:Z[2]});
 }
 
 /* o.front is what turns a lane into a street: two frontages with storeys on them, so
@@ -1541,9 +1656,12 @@ function blocks(lng,lat,Z,o){
     var a=i/n*TAU+.4, d=(o.r||90)*(.10+.90*gr), f=.7+.6*gh;
     /* A few degrees of wobble even on the grid: a quarter of hand-built townhouses is
        aligned, not machined, and perfectly parallel rectangles read as a warehouse. */
+    /* floors, not just corner bays: a tower with storeys reads as a tower, and a
+       block of them reads as a city rather than as a row of crates */
     rows.push([Math.cos(a)*d, Math.sin(a)*d, o.w||24, o.d||20,
                o.rot===undefined?(i*37)%90:o.rot+((i*29)%7-3), 1,
-               {h:H*f, roof:H*f*1.06, bays:5}]);
+               {h:H*f, roof:H*f*1.06, bays:5, floors:o.floors===undefined?3.4:o.floors,
+                tiles:false}]);
   }
   precinct(lng,lat,rows,7,Z[1]);
 }
@@ -1583,8 +1701,8 @@ var ARCH=[
   ['Akihabara',                  blocks,{r:130,n:7,w:26,d:22,h:38}],
   ['Tokyo National Museum',      temple,{w:60,d:26,rot:0,h:16,r:180,
                                          halls:[[-58,-20,22,18,0],[58,-20,22,18,0]]}],
-  ['teamLab Planets',            temple,{w:34,d:26,rot:0,h:9,r:90,n:16}],
-  ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14}],
+  ['teamLab Planets',            temple,{w:34,d:26,rot:0,h:9,r:90,n:16,wall:false}],
+  ['Fuji Subaru Line 5th Station',temple,{w:16,d:12,rot:0,h:7,r:80,n:14,wall:false}],
   /* The one place the surroundings portrait had nothing to draw: an island a
      kilometre offshore with nothing else authored near it. */
   ['Enoshima',                   shrine,{w:18,d:12,rot:340,h:9,app:210,torii:16,toriiH:8,r:190,n:40}],
@@ -2378,7 +2496,11 @@ var NB=8;   /* buckets: 0 land 1 coast 2 ridge 3 urban 4 urban-core 5 fuji 6 str
    looking at a kilometre of real ground, and filling it to country-zoom density is
    exactly what buries the street plan. GROUND_FLOOR is what the generated fill keeps
    no matter how much drawing is already on the sheet. */
-var TARGET=11000,TARGET_NEAR=9000,GROUND_FLOOR=1400;
+/* Raised from 11000/9000. The drawings carry about half again as much structure as
+   they did, and the frame cost of the whole sheet is a third of what it was, so the
+   budget that was set against the old numbers was leaving the paper emptier than it
+   needed to be. The wall-of-ink assertion in the tests is the ceiling on this. */
+var TARGET=12600,TARGET_NEAR=10200,GROUND_FLOOR=1550;
 /* buf is sized for the worst case pass 1 can produce, not for NPTS: the >=CAP guard
    in the fill makes under-sizing safe, and eight buckets at NPTS+30000 would be
    megabytes of Float32Array nobody ever fills. */
