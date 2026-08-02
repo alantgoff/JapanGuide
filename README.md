@@ -26,6 +26,7 @@ The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `
 | **Read a place** | Click any mark — or its name, which is the bigger target — for what it is, why it's worth going, and a practical note — opening hours, the hour that beats the crowds, whether it's cash-only. |
 | **Search** | Takes what you'd actually type: `asakusa`, `golden pavilion`, `deer`, `glico`, `black eggs`, `東大寺`. Whole-word matches rank first, so `uji` finds Byōdō-in rather than every Fuji. |
 | **Jump** | Region buttons fly between Tokyo, Fuji & Hakone, Kyoto, Nara, Osaka, and the whole country. If a place is open when you switch city, the card comes with you — it lands on that city's first walk stop, so it answers *what is Kyoto* rather than leaving a Tokyo caption over a Kyoto map. |
+| **Paste a list** | Adding places one pin at a time is fine for three and hopeless for forty. *Paste a list* takes one place per line — a link copied from Google or Apple Maps, or a name followed by its coordinates — and reads the coordinates out of whichever you give it. A pair typed the wrong way round is put back; a line it cannot read is handed back rather than silently dropped. |
 | **Filter** | Chips along the bottom turn each kind of place on and off, and *None* / *All* does the lot in one press — the quick way to look at nothing but the temples, or nothing but where to eat. |
 | **Zoom into a district** | Keep going past the city marks and the cloud resolves: the Kamo between its banks, the Heian grid of blocks, Nishiki's five blocks of stalls, the moat around Nijō, the torii climbing Fushimi. Sixty-six places are drawn as their own shape rather than as a dot, and past about z16 they stand up — eaves, columns, a hipped roof, Kiyomizu's stage on its stilts, Sensō-ji's pagoda. |
 | **Where the card sits** | Beside whatever you opened, not welded to the right edge. It picks from eight positions around the anchor and takes the first that fits the window and clears the other panels, so it follows the marker as you pan and stays out of the way. Narrow screens keep the bottom sheet. |
@@ -39,7 +40,7 @@ The paper surface is [Paper Shaders](https://github.com/paper-design/shaders)' `
 
 Seven kinds: temples & shrines, gardens & nature, views & districts, museums & culture, markets & street food, **matcha, tea & coffee**, and **food & drink**.
 
-The tea entries are shopfronts rather than landmarks, so each one's note names the street or the station it is off: the coordinate gets you to the block and the note gets you to the door.
+The tea and restaurant entries are shopfronts rather than landmarks, so each one's note names the street or the station it is off: the coordinate gets you to the block and the note gets you to the door. Where a table needs booking months out, the note says so — turning up at a two-star counter on the night is not a plan.
 
 Your places are drawn in vermilion so they read apart from the built-in route. Edit, move or delete any of them. Anything dropped well away from the five cities files under *Elsewhere* rather than being mislabelled.
 

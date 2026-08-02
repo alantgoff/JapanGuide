@@ -236,6 +236,12 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #pform input[type=text],#pform textarea{width:100%;background:rgba(34,31,27,.035);border:1px solid var(--line-strong);
   color:var(--ink);font-family:var(--f-body);font-size:12.5px;padding:9px 10px;border-radius:2px;line-height:1.5}
 #pform textarea{resize:vertical;min-height:64px}
+/* the paste box borrows the form's field styling rather than inventing another */
+#sheet textarea{width:100%;background:rgba(34,31,27,.035);border:1px solid var(--line-strong);
+  border-radius:2px;padding:10px 11px;font-family:var(--f-mono);font-size:11.5px;line-height:1.6;
+  color:var(--ink);resize:vertical;min-height:150px;margin:14px 0 10px}
+#sheet textarea:focus{outline:none;border-color:var(--shu);background:var(--shu-wash)}
+#sheet .sft button[disabled]{opacity:.4;cursor:default}
 #pform input:focus,#pform textarea:focus{outline:none;border-color:var(--shu);background:var(--shu-wash)}
 .catpick{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .catpick button{display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--line-strong);
@@ -429,6 +435,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
     <p class="mh-note" id="gintro">My favourite places along the Golden Route — temples, views, matcha, and the restaurants worth the detour. Drag to pan, scroll to zoom, tap any mark.</p>
     <div class="mh-acts">
       <button id="addplace" aria-pressed="false">Add a place</button>
+      <button id="pastebtn">Paste a list</button>
       <button id="tipsbtn">Before you go</button>
       <button id="sharebtn">Share</button>
     </div>
@@ -531,7 +538,26 @@ var KW={
 "Suzukien Asakusa":"tokyo matcha gelato ice cream asakusa suzukien seven levels",
 "Sakurai Japanese Tea Experience":"tokyo tea aoyama sakurai roasted hojicha counter",
 "Ippodo Tea Tokyo Marunouchi":"tokyo tea ippodo kitte marunouchi matcha",
-"HIGASHIYA GINZA":"tokyo wagashi ginza higashiya tea sweets"
+"HIGASHIYA GINZA":"tokyo wagashi ginza higashiya tea sweets",
+"Sukiyabashi Jiro":"sushi tokyo ginza jiro edomae omakase michelin",
+"Kyubey Ginza":"sushi tokyo ginza kyubey omakase lunch",
+"Sushi Saito":"sushi tokyo akasaka saito omakase michelin",
+"Narisawa":"tokyo tasting menu aoyama narisawa michelin innovative",
+"Den":"tokyo kaiseki jingumae den michelin tasting",
+"Asakusa Imahan":"meat beef sukiyaki tokyo asakusa imahan wagyu",
+"Tonkatsu Maisen Aoyama":"meat pork tonkatsu tokyo aoyama maisen katsu sando",
+"Butagumi":"meat pork tonkatsu tokyo nishi-azabu butagumi",
+"Sushi Dai Toyosu":"sushi tokyo toyosu market breakfast sushi dai queue",
+"Kikunoi Honten":"kyoto kaiseki michelin kikunoi higashiyama",
+"Hyotei":"kyoto kaiseki michelin hyotei nanzenji breakfast egg",
+"Honke Owariya":"kyoto soba noodles owariya oldest",
+"Izuju":"kyoto sushi saba mackerel gion izuju pressed",
+"Menbaka Fire Ramen":"kyoto ramen fire menbaka noodles",
+"Kani Doraku Dotonbori":"osaka crab kani doraku dotonbori sign",
+"Mizuno":"osaka okonomiyaki mizuno dotonbori",
+"Harukoma Sushi":"osaka sushi harukoma tenjinbashi cheap",
+"Tsuruhashi Korean Town":"osaka yakiniku meat korean tsuruhashi grill bbq",
+"Nakatanidou":"nara mochi pounding nakatanidou yomogi sanjo"
 };
 /* id, name, nameJa, cat, region, lat, lng, rank(1 iconic/2 major/3 notable), why, note, day? */
 var PLACES = [
@@ -629,7 +655,33 @@ var PLACES = [
 ["Suzukien Asakusa","壽々喜園","matcha","tokyo",35.7160,139.7975,2,"Matcha gelato in seven strengths; the darkest is almost bitter and the point.","North of Senso-ji, off Kototoi-dori. Number seven sells out first on hot days."],
 ["Sakurai Japanese Tea Experience","櫻井焙茶研究所","matcha","tokyo",35.6640,139.7128,2,"Tea roasted in front of you at a counter, served like a tasting menu.","Fifth floor of Spiral, Minami-Aoyama. Book ahead; the counter seats about eight."],
 ["Ippodo Tea Tokyo Marunouchi","一保堂茶舗 東京丸の内店","matcha","tokyo",35.6794,139.7645,3,"The Kyoto house in Tokyo, with the same tearoom lesson.","In KITTE opposite Tokyo station's Marunouchi side."],
-["HIGASHIYA GINZA","ヒガシヤ ギンザ","matcha","tokyo",35.6717,139.7625,3,"A modern wagashi house where the sweet is designed around the tea.","Ginza 1-chome, second floor. Afternoon tea sets; the shop downstairs sells the sweets to take away."]
+["HIGASHIYA GINZA","ヒガシヤ ギンザ","matcha","tokyo",35.6717,139.7625,3,"A modern wagashi house where the sweet is designed around the tea.","Ginza 1-chome, second floor. Afternoon tea sets; the shop downstairs sells the sweets to take away."],
+
+/* ---- tables ----
+   Not a ranking. These are the ones whose address I can put on the right block and
+   whose reputation is old enough to be worth the detour; a restaurant list is the
+   most perishable thing in a guide, so the note says how to get in as well as where
+   it is. Anything that needs booking says so, because turning up at a two-star
+   counter on the night is not a plan. */
+["Sukiyabashi Jiro","すきやばし次郎","eat","tokyo",35.6716,139.7639,2,"Twenty pieces in half an hour, at the counter that made edomae sushi famous outside Japan.","Ginza 4-chome, basement of the Tsukamoto Sogyo building by the subway. Effectively unbookable direct — most people go through a hotel concierge, months out."],
+["Kyubey Ginza","久兵衛 銀座本店","eat","tokyo",35.6695,139.7614,3,"Old Ginza sushi that will still seat a stranger, which the famous ones no longer will.","Ginza 8-chome. Lunch sets are a fraction of dinner. Book a few days ahead, or sit at the counter upstairs."],
+["Sushi Saito","鮨さいとう","eat","tokyo",35.6664,139.7398,3,"Three seats wide, and for years the hardest reservation in the city.","Ark Hills South Tower, Akasaka. Members and hotel concierges only in practice."],
+["Narisawa","ナリサワ","eat","tokyo",35.6712,139.7220,3,"Japanese produce cooked as landscape — bread proved at the table, soil and moss on the plate.","Minami-Aoyama 2-chome. Book online well ahead; lunch is easier than dinner."],
+["Den","傳","eat","tokyo",35.6720,139.7100,3,"A kaiseki that jokes — the fried chicken comes in a takeaway box with your face on it.","Jingumae. Book two to three months out. Warm and unstuffy despite the stars."],
+["Asakusa Imahan","浅草今半","eat","tokyo",35.7145,139.7900,3,"Sukiyaki cooked at the table by someone who has done it ten thousand times.","Nishi-Asakusa, ten minutes west of Senso-ji. Lunch sets are far cheaper than dinner."],
+["Tonkatsu Maisen Aoyama","とんかつまい泉 青山本店","eat","tokyo",35.6675,139.7085,3,"Pork cutlet in a converted bathhouse, tender enough to cut with chopsticks.","Jingumae 4-chome, off Omotesando. Queue at the restaurant or buy the sandwich at the hatch by the door."],
+["Butagumi","豚組","eat","tokyo",35.6570,139.7215,3,"Forty breeds of pork, one cutlet at a time, in an old wooden house.","Nishi-Azabu. Book ahead; the house is small and there is no bar to wait at."],
+["Sushi Dai Toyosu","寿司大 豊洲","eat","tokyo",35.6455,139.7866,3,"Breakfast sushi at the fish market, the omakase decided by what came in that morning.","Toyosu Market, block 6. The queue starts before dawn and runs three hours; go on a market day."],
+["Kikunoi Honten","菊乃井 本店","eat","kyoto",34.9990,135.7815,2,"Three-star kaiseki in a Higashiyama tea house, plated to the month it is served in.","Shimokawara-dori below Kodai-ji. Book weeks out; the lunch bento in the annexe is the affordable way in."],
+["Hyotei","瓢亭","eat","kyoto",35.0113,135.7885,3,"Four hundred years of kaiseki, and a soft-boiled egg it is famous for.","By Nanzen-ji. The breakfast in the annexe is the cheapest seat at a three-star table in Japan."],
+["Honke Owariya","本家尾張屋","eat","kyoto",35.0125,135.7583,3,"Soba from a confectioner that has been trading since 1465.","Kurumayacho-dori at Nijo. No booking; go early for the hourai soba stacked in five tiers."],
+["Izuju","いづ重","eat","kyoto",35.0038,135.7785,3,"Kyoto-style pressed sushi — cured mackerel, not raw fish — opposite the Yasaka gate.","Shijo-dori facing Yasaka Shrine. Takeaway boxes travel well for a train picnic."],
+["Menbaka Fire Ramen","めん馬鹿一代","eat","kyoto",35.0210,135.7513,3,"The chef sets your bowl alight with burning leek oil, a foot from your face.","North of Nijo Castle. Phones on the table, hands down — they will tell you when to duck."],
+["Kani Doraku Dotonbori","かに道楽 道頓堀本店","eat","osaka",34.6686,135.5012,3,"Under the mechanical crab that everyone photographs, crab in every form.","Dotonbori, by the Ebisu bridge. The sign is the landmark; the ground-floor counter does a quick set."],
+["Mizuno","美津の","eat","osaka",34.6683,135.5013,3,"Okonomiyaki from a 1945 shop, the yamaimo one barely holding together.","Dotonbori. Expect a queue down the arcade; they take names at the door."],
+["Harukoma Sushi","春駒","eat","osaka",34.7053,135.5117,3,"Fat cuts of fish for the price of a chain, in a covered shopping street.","Tenjinbashisuji 5-chome. Cash, no bookings, and a queue that moves fast."],
+["Tsuruhashi Korean Town","鶴橋コリアタウン","eat","osaka",34.6652,135.5313,3,"The smell of grilling meat starts at the ticket barrier and does not stop.","Around Tsuruhashi station. Dozens of yakiniku houses; pick one with smoke and a queue."],
+["Nakatanidou","中谷堂","eat","nara",34.6832,135.8272,3,"Mugwort mochi pounded in the street at a speed that draws a crowd.","Sanjo-dori, on the way from the station to the park. Watch for the pounding, then eat it warm."]
 ];
 </script>
 <script>
@@ -4298,6 +4350,119 @@ function tipForm(id){
       setTimeout(function(){try{el.querySelector('#ttitle').focus()}catch(e){}},30);
     });
 }
+/* ---- paste a list of places ----
+   Adding places one pin at a time is fine for three and hopeless for forty, and the
+   coordinates that matter are the ones you already trust — the ones in your own map
+   app. So this eats what you can actually copy: a Google or Apple Maps link, a
+   "name, lat, lng" line, a bare pair of numbers. Anything it cannot read is handed
+   back rather than silently dropped, because a list that quietly loses four of your
+   forty is worse than one that refuses. */
+var PASTE_CATS='temple nature view culture food matcha eat'.split(' ');
+function parseCoordLine(raw){
+  var line=raw.trim();
+  if(!line||line.charAt(0)==='#')return null;
+  var lat=null,lng=null,name='',cat='';
+  /* a maps link: @lat,lng is the viewport, !3d/!4d is the pin itself and wins */
+  var m=line.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  if(!m)m=line.match(/[@\/](-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/);
+  if(!m)m=line.match(/[?&](?:q|ll|daddr|sll)=(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/);
+  if(m){
+    lat=+m[1];lng=+m[2];
+    /* whatever sits outside the URL is the name */
+    name=line.replace(/https?:\/\/\S+/g,' ').replace(/[|,;\t]+/g,' ').trim();
+    if(!name){
+      var slug=line.match(/\/place\/([^\/@?]+)/);
+      if(slug)name=decodeURIComponent(slug[1]).replace(/\+/g,' ').trim();
+    }
+  }else{
+    /* Pull the coordinate pair off the end rather than splitting the line on
+       separators, because the separator is whatever the person used — a comma, a
+       pipe, a tab, an em dash — and guessing it wrong loses the whole line. A
+       decimal point is required so that a street number cannot be mistaken for a
+       latitude. Anything before the pair is the name; a bare word after it, if it
+       names one of the categories, is the category. */
+    var cm=line.match(/(-?\d{1,3}\.\d+)\s*[,|;\s]\s*(-?\d{1,3}\.\d+)(?:\s*[|,;\t]\s*([A-Za-z]+))?\s*$/);
+    if(!cm)return {bad:raw.trim()};
+    lat=+cm[1];lng=+cm[2];
+    if(cm[3]&&PASTE_CATS.indexOf(cm[3].toLowerCase())>=0)cat=cm[3].toLowerCase();
+    name=line.slice(0,cm.index).replace(/\s+/g,' ');
+  }
+  /* a pair the wrong way round is the classic paste error and it lands in the sea */
+  if(Math.abs(lat)>90&&Math.abs(lng)<=90){var t=lat;lat=lng;lng=t}
+  if(!(lat>=-90&&lat<=90&&lng>=-180&&lng<=180))return {bad:raw.trim()};
+  name=name.replace(/^[\s\u2013\u2014,;|-]+|[\s\u2013\u2014,;|-]+$/g,'');
+  return {name:name||('Pin '+lat.toFixed(3)+', '+lng.toFixed(3)),lat:lat,lng:lng,cat:cat};
+}
+function parsePaste(text,cat){
+  var lines=String(text).split(/\r?\n/),good=[],bad=[];
+  for(var i=0;i<lines.length;i++){
+    if(!lines[i].trim())continue;
+    var r=parseCoordLine(lines[i]);
+    if(!r)continue;
+    if(r.bad){bad.push(r.bad);continue}
+    good.push({name:r.name,lat:r.lat,lng:r.lng,cat:r.cat||cat||'eat'});
+  }
+  return {good:good,bad:bad};
+}
+function pasteSheet(){
+  openSheet(
+    '<div class="shd"><span class="eyebrow">Add</span><h2>Paste a list</h2>'+
+    '<p class="ja">一覧を貼る</p><button id="sheetclose" aria-label="Close">×</button></div>'+
+    '<div class="sbd">'+
+    '<p class="lede">One place per line. A link copied from Google or Apple Maps, or a name followed by its coordinates — whichever is easier to get hold of. The coordinates come from wherever you copied them, so they are as right as your own map app is.</p>'+
+    '<textarea id="pastebox" rows="8" spellcheck="false" placeholder="Sushi Saito, 35.6664, 139.7398&#10;https://maps.google.com/?q=34.8925,135.8095  Tsuen Tea&#10;Kikunoi, 34.9990, 135.7815, eat"></textarea>'+
+    '<p class="stat" id="pastestat">Nothing pasted yet.</p>'+
+    '<p class="warn" id="pastebad" hidden></p>'+
+    '</div>'+
+    '<div class="sft"><button id="pastego" class="primary">Add them</button>'+
+    '<span class="spacer"></span><button id="pastecancel">Cancel</button></div>',
+    function(el){
+      var box=el.querySelector('#pastebox'),stat=el.querySelector('#pastestat'),
+          bad=el.querySelector('#pastebad'),go=el.querySelector('#pastego');
+      function review(){
+        var r=parsePaste(box.value,'eat');
+        stat.innerHTML=r.good.length
+          ? '<b>'+r.good.length+'</b> place'+(r.good.length===1?'':'s')+' ready to add.'
+          : 'Nothing readable yet.';
+        if(r.bad.length){
+          bad.hidden=false;
+          bad.textContent=r.bad.length+' line'+(r.bad.length===1?'':'s')+' had no coordinates and will be skipped: '+
+            r.bad.slice(0,3).map(function(t){return '"'+t.slice(0,42)+'"'}).join(', ')+(r.bad.length>3?' …':'');
+        }else bad.hidden=true;
+        go.disabled=!r.good.length;
+        return r;
+      }
+      box.addEventListener('input',review);
+      review();
+      el.querySelector('#pastecancel').onclick=closeSheet;
+      go.onclick=function(){
+        var r=parsePaste(box.value,'eat');
+        if(!r.good.length)return;
+        if(USER.length+r.good.length>400){
+          bad.hidden=false;bad.textContent='That would take you past 400 of your own places, which is the practical limit for one guide.';return;
+        }
+        var first=null;
+        for(var i=0;i<r.good.length;i++){
+          var g=r.good[i];
+          var rec={id:uid(),name:g.name,ja:'',cat:CATS[g.cat]?g.cat:'eat',note:'',
+                   lat:g.lat,lng:g.lng,region:nearestRegion(g.lng,g.lat)};
+          USER.push(rec);if(!first)first=rec.id;
+        }
+        persistUser();
+        /* whatever they just added must not be invisible behind a filter */
+        for(var c in CATS)if(!filters[c]){
+          filters[c]=true;
+          Array.prototype.forEach.call(document.querySelectorAll('.fchip'),function(b){
+            if(b.dataset.c===c)b.setAttribute('aria-pressed','true')});
+        }
+        if(window.__syncAllChip)window.__syncAllChip();
+        closeSheet();needOver=true;
+        if(first)select(first,true);
+        toast('Added '+r.good.length+' place'+(r.good.length===1?'':'s')+'. They travel in your share link.');
+      };
+      setTimeout(function(){try{box.focus()}catch(e){}},30);
+    });
+}
 function shareSheet(){
   var link=shareLink(),frag='#'+shareFragment();
   var mine=USER.length,notes=TIPS.length,stops=trip.length;
@@ -4385,6 +4550,7 @@ function welcomeSheet(){
 document.getElementById('addplace').onclick=function(){placing?endPlacing():startPlacing(null)};
 document.getElementById('tipsbtn').onclick=tipsSheet;
 document.getElementById('sharebtn').onclick=shareSheet;
+document.getElementById('pastebtn').onclick=pasteSheet;
 
 /* ---- paper ----
    The ground is real washi rather than a flat fill. Two routes to it:
