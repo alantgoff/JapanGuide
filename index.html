@@ -1330,6 +1330,45 @@ function pond(lng,lat,rM,b,z,o){
   }
 }
 
+/* A stone lantern: a post, the wide cap over it, and the finial on top. One of these
+   is not worth drawing. Kasuga Taisha has three thousand, in rows down every approach
+   and hanging along every corridor, and they — not the buildings — are what the place
+   looks like. The same rule as the torii at Fushimi: repetition is legible long before
+   any single element is.
+     putp(du,dv,h)  places a point that many metres from the lantern's own foot */
+function lantern(putp,hgt){
+  var i,st=Math.max(2,Math.round(hgt*.62/.45));
+  for(i=1;i<=st;i++)putp(0,0,hgt*.62*i/st);
+  var cr=hgt*.24,nc=7;
+  for(i=0;i<nc;i++){var a=i/nc*TAU;
+    putp(Math.cos(a)*cr,Math.sin(a)*cr,hgt*.70);
+    putp(Math.cos(a)*cr*.66,Math.sin(a)*cr*.66,hgt*.81);}
+  putp(0,0,hgt*.92);putp(0,0,hgt);
+}
+
+/* An arched bridge. Sumiyoshi's Sorihashi is so steep it is closer to a ladder than a
+   bridge, and it is the thing on every photograph of the shrine; a flat deck would say
+   nothing. The arch is a half-sine, the rails follow it a metre above, and the piers
+   drop from it to the water. */
+function bridge(lng,lat,b,z,o){
+  o=o||{};
+  var L=o.len||20,W=o.w||3.6,rise=o.rise||3.4,rot=(o.rot||0)*D2R;
+  var ax=aspect(lat),cs=Math.cos(rot),sn=Math.sin(rot),i,q;
+  var zB=Math.max(z,zLift(rise+2));
+  function put(u,v,h){push(lng+mLat(u*cs-v*sn)*ax,lat+mLat(u*sn+v*cs),b,zB,h)}
+  var n=Math.max(8,Math.round(L/.9));
+  for(i=0;i<=n;i++){
+    var t=i/n,u=-L/2+L*t,h=rise*Math.sin(Math.PI*t);
+    for(q=-1;q<=1;q+=2)put(u,q*W*.5,h);
+    if(i%2===0)put(u,(arnd()-.5)*W*.7,h);
+    for(q=-1;q<=1;q+=2)put(u,q*W*.5,h+1.05);          /* the rails */
+  }
+  for(var pi2=1;pi2<=2;pi2++){
+    var tp=pi2/3,up=-L/2+L*tp,hp=rise*Math.sin(Math.PI*tp),np=Math.max(2,Math.round(hp/.7));
+    for(q=-1;q<=1;q+=2)for(i=0;i<=np;i++)put(up,q*W*.42,hp*i/np);
+  }
+}
+
 /* A solid of revolution from a profile of [height, radius] pairs — rings up the form,
    plus a few verticals so it reads as a body and not as a stack of hoops. The guide
    needs it exactly once, for a thing it would otherwise have to lie about: the Kamakura
@@ -1633,7 +1672,15 @@ function buildSites(){
      without them this is a footpath, with them it is the tunnel. */
   SITE('Fushimi Inari Taisha',function(lng,lat,Z){
     blob(lng,lat,120,40,7,Z[0],{conc:1.4});
-    precinct(lng,lat,[[0,0,26,16,0,1,{h:12,roof:15}],[-8,-40,14,10,0,1,{h:9,roof:12}],[30,18,10,10,0,1,{h:7,roof:9}]],7,Z[1]);
+    precinct(lng,lat,[
+      [0,0,26,16,0,1,{h:12,roof:19,bays:2,eave:3.2,podium:1.6,engawa:1.8}],   /* the honden */
+      [-8,-40,20,11,0,1.15,{h:13,roof:19,bays:2,eave:3.4,podium:1.4}],        /* the Romon, two storeys */
+      [30,18,10,10,0,1,{h:7,roof:10,podium:.7}],
+      [2,-20,17,12,0,1,{h:9,roof:13.5,bays:2,eave:2.6,podium:1.1}]],7,Z[1]);  /* the gaihaiden */
+    /* the great torii in front of the Romon, which is the one you photograph before
+       you have walked a single step of the climb */
+    (function(){var ax=aspect(lat);
+      toriiForm(function(off,hgt){push(lng+mLat(off)*ax,lat-mLat(58),7,Math.max(Z[0],zLift(11)),hgt)},5.4,11)})();
     /* One evenly-spaced corridor drew the whole climb as a single grey bar, which is
        the one thing Fushimi is not. The Senbon Torii — the stretch just behind the
        shrine where the gates stand shoulder to shoulder and it stops being a path and
@@ -1956,6 +2003,20 @@ function shrine(lng,lat,Z,o){
   precinct(lng,lat,[[0,0,o.w||22,d,r,1,{h:o.h||9,roof:(o.h||9)*1.7}],
                     [0,-(d*.5+26),12,8,r,1,{h:6,roof:8}]],7,Z[1]);
   var L=o.app||150;
+  if(o.lanterns){
+    var lp=o.lanterns,lh=o.lanternH||2.4,lw=o.lanternW||7;
+    var nl2=Math.floor(L/lp),zL=Math.max(Z[1],zLift(lh));
+    for(var q2=0;q2<nl2;q2++){
+      var dd=L*(q2+.5)/nl2;
+      /* forward is away from the shrine along the approach; perp is across it */
+      var fx=-Math.sin(rr),fy=-Math.cos(rr),px2=-Math.cos(rr),py2=Math.sin(rr);
+      for(var sd=-1;sd<=1;sd+=2){
+        var bx=lng+mLat(fx*dd+px2*sd*lw*.5)*ax, by=lat+mLat(fy*dd+py2*sd*lw*.5);
+        (function(bx2,by2){lantern(function(du,dv,h){
+          push(bx2+mLat(du)*ax,by2+mLat(dv),7,zL,h)},lh)})(bx,by);
+      }
+    }
+  }
   corridor([[lng-Math.sin(rr)*mLat(L)*ax, lat-Math.cos(rr)*mLat(L)],[lng,lat]],
            o.appW||10,6,7,Z[1],{rail:2.4,fill:.15,ribs:o.torii||18,ribZ:Z[2],
                                 ribH:o.toriiH||8,hz:Z[2],gate:1,ribOut:o.ribOut||.9});
@@ -2160,8 +2221,28 @@ var ARCH=[
     precinct(lng,lat,[[0,-38,10,8,0,1,{h:7,roof:10,podium:.7}]],7,Z[1]);
   }, null],
   ['Nikko Tosho-gu',             temple,{w:26,d:20,rot:0,h:13,pag:5,r:150}],
-  ['Kasuga Taisha',              shrine,{w:24,d:12,rot:104,h:10,app:220,torii:16,toriiH:7,r:160}],
-  ['Sumiyoshi Taisha',           shrine,{w:26,d:14,rot:0,h:11,app:170,torii:20,toriiH:8,r:150}],
+  /* Three thousand lanterns: stone ones in rows down every approach, bronze ones
+     hanging the length of the corridors. They are what Kasuga looks like, far more
+     than its buildings are, and the archetype's bare approach said none of it. */
+  ['Kasuga Taisha',              shrine,{w:24,d:12,rot:104,h:10,app:220,torii:60,toriiH:8,r:160,
+                                         lanterns:5.5,lanternH:2.4,lanternW:7}],
+  /* Sumiyoshi-zukuri: four halls in line, straight-gabled rather than curved — the
+     oldest shrine form in Japan and the one that predates any Chinese influence, so
+     sori is turned off here on purpose. And the Sorihashi, an arched bridge so steep
+     it is closer to a ladder, which is the picture everyone has of the place. */
+  ['Sumiyoshi Taisha', function(lng,lat,Z){
+    var ax=aspect(lat);
+    blob(lng,lat,150,30,7,Z[0],{conc:1.3});
+    pond(lng-mLat(66)*ax,lat-mLat(30),34,7,Z[1],{ea:1.6,eb:.7,lobes:2,amp:.1,rip:16});
+    bridge(lng-mLat(66)*ax,lat-mLat(30),7,Z[1],{len:21,w:3.6,rise:4.2,rot:8});
+    var rows=[];
+    for(var k=0;k<4;k++)rows.push([k<3?-18+k*18:0, k<3?0:-26, 9,13,0,1.1,
+      {h:6.5,roof:11,bays:1.7,eave:1.9,podium:1.2,sori:0,ridgeP:2.2}]);
+    rows.push([0,-52,15,10,0,1,{h:8,roof:12,podium:.9}]);
+    precinct(lng,lat,rows,7,Z[1]);
+    corridor([[lng,lat-mLat(170)],[lng,lat]],10,6,7,Z[1],
+             {rail:2.4,fill:.15,ribs:20,ribZ:Z[2],ribH:8,hz:Z[2],gate:1,ribOut:.9});
+  }, null],
   ['Hakone Shrine',              shrine,{w:18,d:12,rot:56,h:9,app:190,torii:22,toriiH:9,r:130}],
   ['Tokyo Tower',                tower, {h:333,base:88,deck:26,deckAt:.45,deck2:13,deck2At:.75,mast:1,r:110}],
   ['Tsutenkaku & Shinsekai',     tower, {h:103,base:26,deck:11,deckAt:.80,mast:1,r:120}],
@@ -2188,7 +2269,29 @@ var ARCH=[
   ['Ueno Park',                  grove, {r:420,n:300,h:19,eb:1.3}],
   ['Imperial Palace East Gardens',grove,{r:330,n:240,h:14}],
   ['Oshino Hakkai',              grove, {r:180,n:120,h:11,conc:1.2}],
-  ['Owakudani',                  grove, {r:260,n:150,h:7,conc:1.5}],
+  /* Owakudani is not a wood. It is a bare sulphur crater with the vegetation burned
+     off it and steam coming out of the ground, and drawing trees there was not a thin
+     claim but a wrong one. The bowl, the scree in it, and the vents. */
+  ['Owakudani', function(lng,lat,Z){
+    var ax=aspect(lat),i,q;
+    cone(lng,lat,{rings:5,spokes:8,r0:60,r1:280,n0:16,n1:70,b:7,z0:Z[0],z1:Z[1],
+                  jit:22,relief:46});
+    /* scree: bare ground, no stems on it */
+    blob(lng,lat,230,120,7,Z[1],{conc:1.1,ea:1.25});
+    /* the vents. A plume is a column that thins and drifts as it rises, and it is the
+       only thing moving in the whole valley. */
+    var zV=Math.max(Z[1],zLift(18));
+    for(i=0;i<9;i++){
+      var a=arnd()*TAU,rr=Math.sqrt(arnd())*140;
+      var vx=lng+Math.cos(a)*mLat(rr)*ax, vy=lat+Math.sin(a)*mLat(rr);
+      var hgt=9+arnd()*11,n2=Math.max(5,Math.round(hgt/1.5));
+      for(q=1;q<=n2;q++){
+        var t=q/n2,sp=1.1+t*4.2;
+        for(var k=0;k<(t<.45?1:2);k++)
+          push(vx+agauss()*mLat(sp)*ax+mLat(t*t*5)*ax, vy+agauss()*mLat(sp), 7, zV, hgt*t);
+      }
+    }
+  }, null],
   /* The Fuji lakes are already drawn, as real polygons in LAKES walked into the
      cloud at load. An ellipse laid over one is a worse copy of something the map
      already has right, so these two keep the surroundings portrait — which shows
@@ -3994,9 +4097,9 @@ var PORSITE={};
    percentile say so, and everywhere else is left alone. */
 var PORR={'Senso-ji':125,'Heian Jingu':135,'Kinkaku-ji':92,'Meiji Jingu':250,
           'Todai-ji':195,'Kiyomizu-dera':160,'Nijo Castle':250,'Byodo-in':105,
-          'Kasuga Taisha':85,'Sumiyoshi Taisha':95,'Tsurugaoka Hachimangu':110,
+          'Kasuga Taisha':130,'Fushimi Inari Taisha':140,'Sumiyoshi Taisha':95,'Tsurugaoka Hachimangu':110,
           'Fujisan Hongu Sengen Taisha':95,'Hakone Shrine':100,'Enoshima':110,
-          'Nezu Shrine':80,'Pontocho Alley':34,'Nishiki Market':48,"Philosopher's Path":66,'Meguro River':95,'Omoide Yokocho':30,'Yanaka':58,'Tsukiji Outer Market':58,'Kuromon Market':58,'Gion':72,'Shibuya Crossing':175,'Dotonbori':78,'Ginkaku-ji':78};
+          'Nezu Shrine':80,'Fuji Subaru Line 5th Station':95,'Owakudani':300,'Pontocho Alley':34,'Nishiki Market':48,"Philosopher's Path":66,'Meguro River':95,'Omoide Yokocho':30,'Yanaka':58,'Tsukiji Outer Market':58,'Kuromon Market':58,'Gion':72,'Shibuya Crossing':175,'Dotonbori':78,'Ginkaku-ji':78};
 function portraitPts(p){
   var a=PORSITE[p.name],out=[],i;
   if(a){
