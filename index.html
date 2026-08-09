@@ -910,6 +910,36 @@ function blob(lng,lat,rM,n,b,z,o){
   }
 }
 
+/* A torii, drawn in its own plane: emit(off, hgt) places a point so many metres across
+   the opening and so many up.
+
+   Two posts and a straight stick across the top — which is what the ribs were — is a
+   goalpost, and a goalpost is not a torii. Four things make the shape, and all four are
+   cheap: the pillars lean inward, so the opening is a trapezoid and never a doorframe;
+   the nuki crosses low and pokes out the far side of both pillars; the kasagi on top
+   overhangs by a third of the span at each end; and the kasagi curves, lifting at the
+   ends. That last curve is the myojin style, it is what nearly every torii anyone
+   pictures has, and against a sky it is the whole silhouette. */
+function toriiForm(emit,hw,ht){
+  var i,pr=Math.max(.08,ht*.048), top=ht*.90, nk=ht*.66;
+  var np=Math.max(3,Math.round(ht/.9));
+  for(var s=-1;s<=1;s+=2)for(i=0;i<=np;i++){
+    var t=i/np, off=s*hw*(1-.07*t);              /* the batter */
+    emit(off-pr,top*t);emit(off+pr,top*t);
+  }
+  var nw=hw*1.10,nn=Math.max(4,Math.round(nw*2/.75));
+  for(i=0;i<=nn;i++)emit(-nw+2*nw*i/nn,nk);
+  /* the gakuzuka, the little post at the centre carrying the plaque */
+  var ng=Math.max(2,Math.round((top-nk)/.5));
+  for(i=0;i<=ng;i++)emit(0,nk+(top-nk)*i/ng);
+  var kw=hw*1.38,nkc=Math.max(6,Math.round(kw*2/.5));
+  for(i=0;i<=nkc;i++){
+    var u=-kw+2*kw*i/nkc, f=Math.abs(u)/kw, lift=ht*.06*f*f;
+    emit(u,top+lift);                            /* shimaki */
+    emit(u,top+lift+Math.max(.12,ht*.045));      /* kasagi */
+  }
+}
+
 /* A band of dots along a polyline — the workhorse, and the one that carries this
    whole feature.
 
@@ -963,15 +993,68 @@ function corridor(path,w,pitch,b,z,o){
       for(var r=0;r<rn;r++){
         var rt=len*(r+.5)/rn,rw=w*.5*(o.ribOut||1.15);
         for(var q=-1;q<=1;q+=2)put(rt,mLat(q*rw),o.ribZ||z);
-        /* A rib with a height is a gate: two posts and the lintel carrying across the
-           gap, which is the only thing separating a torii from two poles. */
+        /* A rib with a height is a gate. o.gate says it is a torii and not a market
+           awning or a row of cherries, which is the difference between the approach to
+           a shrine and the middle of Tsukiji. */
         if(o.ribH){
-          var zR=Math.max(o.ribZ||z,o.hz||zLift(o.ribH)),nr=Math.max(2,Math.round(o.ribH/1.6));
-          for(q=-1;q<=1;q+=2)for(var v2=1;v2<=nr;v2++)put(rt,mLat(q*rw),zR,o.ribH*v2/nr);
-          var nl=Math.max(2,Math.round(rw*2.3/1.4));
-          for(var l=0;l<=nl;l++)put(rt,mLat((l/nl-.5)*rw*2.3),zR,o.ribH*1.03);
+          var zR=Math.max(o.ribZ||z,o.hz||zLift(o.ribH));
+          if(o.gate){
+            (function(rt2){toriiForm(function(off,hgt){put(rt2,mLat(off),zR,hgt)},rw,o.ribH)})(rt);
+          }else{
+            var nr=Math.max(2,Math.round(o.ribH/1.6));
+            for(q=-1;q<=1;q+=2)for(var v2=1;v2<=nr;v2++)put(rt,mLat(q*rw),zR,o.ribH*v2/nr);
+            var nl=Math.max(2,Math.round(rw*2.3/1.4));
+            for(var l=0;l<=nl;l++)put(rt,mLat((l/nl-.5)*rw*2.3),zR,o.ribH*1.03);
+          }
         }
       }
+    }
+  }
+}
+
+/* ---- the roof surface ------------------------------------------------------
+   A hipped roof's contour at any height is a rectangle: a degenerate one at the ridge
+   (2*rl long, no depth), the full eave rectangle at the bottom, and a straightforward
+   interpolation between. So the whole surface is a stack of rectangles, which draws
+   all four slopes from one loop — where hips-plus-courses drew two slopes properly, the
+   other two as four bare lines, and left the gable ends looking cut off.
+
+   And the fall between them is a curve. This is *sori*, and it is the single thing that
+   separates this architecture from a barn: the roof drops steeply off the ridge, flattens
+   as it goes, and turns back up at the very edge, so the eave line is a bow and the
+   corners lift. Drawn straight — which is what this was — every temple, gate, castle and
+   pagoda in the guide came out a tent with a box under it.
+
+   Shared, so a pagoda's nine roofs and a hall's one are the same surface off the same
+   curve. Two approximations of one shape drift apart the first time either is tuned.
+
+     put(u,v,h)  plotter in the roof's own metres, u along the ridge
+     rl          half-length of the ridge — 0 gives a pyramid, which is what a pagoda
+                 and every gate tower in the country actually has
+     rw,rd       half-width and half-depth at the eave, overhang already included  */
+function roofSurface(put,rl,rw,rd,hEave,hRidge,sori,pitch){
+  var pw=1+sori*1.5, rise=hRidge-hEave;
+  var nT=Math.max(3,Math.round(Math.max(rw-rl,rd)/1.5));
+  for(var c=0;c<=nT;c++){
+    var t=c/nT, uh=rl+(rw-rl)*t, vh=rd*t;
+    var hh2=hEave+rise*Math.pow(1-t,pw)+rise*sori*.30*Math.pow(t,3.4);
+    var per=4*(uh+vh);
+    if(per<1e-9){put(0,0,hh2);continue}
+    /* the eave is the silhouette, so it is walked at half the pitch of the courses
+       above it and with a fraction of their jitter — a soft outline is a soft roof */
+    var last=c===nT, np=Math.max(4,Math.round(per/(last?pitch*.55:pitch))), jt=last?.07:.2;
+    for(var i=0;i<np;i++){
+      var s=i/np*per, u,v;
+      if(s<2*uh){u=-uh+s;v=-vh}
+      else if(s<2*uh+2*vh){u=uh;v=-vh+(s-2*uh)}
+      else if(s<4*uh+2*vh){u=uh-(s-2*uh-2*vh);v=vh}
+      else{u=-uh;v=vh-(s-4*uh-2*vh)}
+      /* The fourth argument says whether this is silhouette or surface. The eave and
+         the ridge are the shape and have to arrive with the building; the courses
+         between them are texture, and delivering all of it at district zoom turned
+         every hall into a solid black rectangle — richer up close and worse from the
+         distance you actually meet a temple at first. */
+      put(u+hgauss()*jt,v+hgauss()*jt,hh2,(last||c===0)?0:1);
     }
   }
 }
@@ -1016,17 +1099,54 @@ function hall(lng,lat,wm,hm,rot,b,z,o){
   /* --- the elevation. Drawn bottom-to-top, which is the whole of this file's
          answer to having no depth sort: emission order is paint order. --- */
   var zE=Math.max(z,o.hz||zLift(eh)),top=h0+eh;
+  /* The stone podium. Temple halls in Japan do not sit on the ground, they sit on a
+     dressed stone platform a step or three high that runs out past the wall line, and
+     you reach it by stairs. It is a small thing in metres and a large one in the eye:
+     it is the difference between a building standing somewhere and a building put
+     there. Drawn as the platform edge plus its top rim, so the step reads. */
+  if(o.podium){
+    var pdh=o.podium===true?1.1:o.podium, pdo=o.podiumOut||Math.max(1.4,Math.min(wm,hm)*.1);
+    var zPd=Math.max(z,zLift(pdh)),pw3=hw+pdo,pd3=hh+pdo;
+    var npd=Math.max(14,Math.round(2*(pw3+pd3)/1.5)),nvd=Math.max(2,Math.round(pdh/.55));
+    for(i=0;i<npd;i++){
+      var sp=i/npd*4,qu2,qv2;
+      if(sp<1){qu2=-pw3+2*pw3*sp;qv2=-pd3}else if(sp<2){qu2=pw3;qv2=-pd3+2*pd3*(sp-1)}
+      else if(sp<3){qu2=pw3-2*pw3*(sp-2);qv2=pd3}else{qu2=-pw3;qv2=pd3-2*pd3*(sp-3)}
+      for(j=0;j<=nvd;j++)put(qu2+agauss()*.2,qv2+agauss()*.2,zPd,pdh*j/nvd);
+    }
+    /* the flight up to it, on the approach side */
+    var nst=Math.max(3,Math.round(pdh/.32)),stw=Math.min(wm*.42,6.5);
+    for(j=0;j<=nst;j++){
+      var st=j/nst, sy=-pd3-pdo*1.5*(1-st), nsx=Math.max(3,Math.round(stw*2/1.1));
+      for(i=0;i<=nsx;i++)put(-stw+2*stw*i/nsx,sy,zPd*1.2,pdh*st);
+    }
+  }
   /* The eaves are the footprint again, one storey up and at the same pitch, so the
      eye reads one building twice rather than two buildings that happen to align. */
   for(i=0;i<=cx;i++){var u2=-hw+wm*i/cx;put(u2+hgauss()*.4,-hh+hgauss()*.4,zE,top);put(u2+hgauss()*.4,hh+hgauss()*.4,zE,top)}
   for(i=1;i<cy;i++){var v2=-hh+hm*i/cy;put(-hw+hgauss()*.4,v2+hgauss()*.4,zE,top);put(hw+hgauss()*.4,v2+hgauss()*.4,zE,top)}
   /* Columns are what glue two rectangles into a box — but only the near face and the
      two returns. With no depth buffer a complete wire cage reads as a Necker cube;
-     leaving the far wall out is the single thing that makes it read as solid. */
-  var bp=o.bays||3.4,nv=Math.max(2,Math.round(eh/3.2));
+     leaving the far wall out is the single thing that makes it read as solid.
+
+     Pitched to be read against the roof rather than on its own. The roof is a filled
+     surface of several hundred points; a wall of ten columns on three rows under it
+     disappears, and the building reads as a roof lying on the ground with nothing
+     holding it up — which is exactly how every temple in this guide looked. A bay
+     every 2.2m and a row every 1.7m is a colonnade, and it is also very close to what
+     the real bay spacing of these buildings is. */
+  var bp=o.bays||2.2,nv=Math.max(3,Math.round(eh/1.7));
   var nb=Math.max(1,Math.round(wm/bp)),nd=Math.max(1,Math.round(hm/bp));
   for(i=0;i<=nb;i++){var cu=-hw+wm*i/nb;for(j=1;j<nv;j++)put(cu,-hh,zE,h0+eh*j/nv)}
   for(i=0;i<=nd;i++){var cv=-hh+hm*i/nd;for(j=1;j<nv;j++){var hj=h0+eh*j/nv;put(-hw,cv,zE,hj);put(hw,cv,zE,hj)}}
+  /* The frieze immediately under the eaves — on a temple this band is the bracketing,
+     and it is always the darkest line on the elevation because it is in the roof's
+     shadow. It also stops the wall and the roof reading as two unrelated objects. */
+  if(o.frieze!==false&&eh>3){
+    var zFz=zE*1.25,fzh=h0+eh*.94,fzu=Math.max(3,Math.round(wm/1.2)),fzv=Math.max(3,Math.round(hm/1.2));
+    for(i=0;i<=fzu;i++)put(-hw+wm*i/fzu,-hh,zFz,fzh);
+    for(i=0;i<=fzv;i++){var fzc=-hh+hm*i/fzv;put(-hw,fzc,zFz,fzh);put(hw,fzc,zFz,fzh)}
+  }
   /* Storey bands across the same three faces the columns use. Verticals alone give a
      building a height but not a scale — you cannot tell an eight-metre shed from an
      eighty-metre tower until something crosses them at a storey's pitch. Later than
@@ -1040,30 +1160,25 @@ function hall(lng,lat,wm,hm,rot,b,z,o){
       for(i=0;i<=fv;i++){var fvv=-hh+hm*i/fv;put(-hw,fvv,zF,fh);put(hw,fvv,zF,fh)}
     }
   }
-  /* The roof is the entire silhouette of a Japanese hall: a ridge shorter than the
-     building, and four hips falling from its ends to the eave corners. */
+  /* The roof is the entire silhouette of a Japanese hall, and it is bigger in plan than
+     the building under it — the eave overhangs by a metre or three, and that oversail is
+     most of what you see from above. The ridge is shorter than the building, so the two
+     ends hip in rather than gabling. */
+  var so=o.sori===undefined?.62:o.sori;
+  var ov=o.eave===undefined?Math.min(3.0,Math.max(.9,Math.min(wm,hm)*.15)):o.eave;
   var rn2=Math.max(2,Math.round(wm*.5/(o.ridgeP||3.2)));
   for(i=0;i<=rn2;i++)put(-wm*.25+wm*.5*i/rn2+hgauss()*.3,hgauss()*.4,zE,h0+rh);
-  var hn=Math.max(2,Math.round(Math.max(wm,hm)*.3/2.4));
-  for(var s1=-1;s1<=1;s1+=2)for(var s2=-1;s2<=1;s2+=2)
-    for(i=1;i<=hn;i++){var t=i/hn;put(s1*(wm*.25*(1-t)+hw*t),s2*hh*t,zE,h0+rh+(eh-rh)*t)}
-
-  /* Courses down the two long slopes. A ridge with four hips off it is a wireframe of
-     a roof; the courses are the roof — and on a Japanese hall the roof is most of what
-     there is to see, being half the height of the building and the whole of it from
-     above. Each course is the same interpolation the hips already walk, so the surface
-     they fill is exactly the one the hips outline: at t along the slope the roof is
-     wm*.25 wide at the ridge widening to hw at the eave, hh*t out, and falling from rh
-     to eh. They come in a step later than the elevation does — a roof reads as a solid
-     mass long before you can see it is tiled, and arriving together just makes a blur. */
-  if(o.tiles!==false&&rh>0){
-    var zR2=zE*1.6,nc=Math.max(2,Math.round(hh/1.9));
-    for(var sc=-1;sc<=1;sc+=2)for(var c=1;c<=nc;c++){
-      var tc=c/nc, hu=wm*.25*(1-tc)+hw*tc, vv=sc*hh*tc, ht=h0+rh+(eh-rh)*tc;
-      var mu=Math.max(2,Math.round(hu*2/2.1));
-      for(i=0;i<=mu;i++)put(-hu+2*hu*i/mu+hgauss()*.22, vv+hgauss()*.18, zR2, ht);
-    }
+  if(o.tiles!==false&&rh>eh)
+    roofSurface(function(u,v,hgt,late){put(u,v,late?zE*2.1:zE*1.1,hgt)},
+                wm*.25,hw+ov,hh+ov,h0+eh,h0+rh,so,o.tileP||2.1);
+  else{
+    /* flat-topped — a modern block, a castle plinth. No surface to tile, so it keeps
+       the four hip lines that say which way the top falls away. */
+    var hn=Math.max(2,Math.round(Math.max(wm,hm)*.3/2.4));
+    for(var s1=-1;s1<=1;s1+=2)for(var s2=-1;s2<=1;s2+=2)
+      for(i=1;i<=hn;i++){var t=i/hn;put(s1*(wm*.25*(1-t)+hw*t),s2*hh*t,zE,h0+rh+(eh-rh)*t)}
   }
+
   /* The engawa: the boarded verandah that runs round a hall at floor height, and the
      step up to it. It is why a temple reads as raised rather than sitting on the mud. */
   if(o.engawa){
@@ -1075,6 +1190,80 @@ function hall(lng,lat,wm,hm,rot,b,z,o){
       put(-hw-ew,ve,zV,eo);put(hw-0+ew,ve,zV,eo)}
   }
 }
+/* A pagoda is not a tall building. It is a stack of roofs.
+
+   Drawn as a hall with a big h — which is what this guide did — a five-storey pagoda
+   comes out a chimney with a hat, and a chimney is the one thing it does not look
+   like. What makes the silhouette is that each storey's eaves oversail its walls by
+   about the width of the walls again, so from any distance you see a spindle of plates
+   with barely any building between them, tapering as they rise, on a mast.
+
+   The numbers are storeys, metres of eave, and metres of total height, because those
+   are the three facts about a pagoda anyone knows: Horyu-ji is five storeys and 32m,
+   To-ji is five and 55m and the tallest wooden thing in Japan, Chureito is five and
+   small and the whole reason people climb that hill.
+
+   The sorin — the bronze mast on top with its nine rings — is a quarter to a third of
+   the total height and is genuinely load-bearing on the eye: without it the stack
+   stops dead and reads as a wedding cake. */
+function pagoda(lng,lat,b,z,o){
+  o=o||{};
+  var n=o.n||5, W=o.w||11, H=o.h||33, rot=(o.rot||0)*D2R;
+  var ax=aspect(lat),cs=Math.cos(rot),sn=Math.sin(rot),i,k;
+  function put(u,v,zz,h){push(lng+mLat(u*cs-v*sn)*ax, lat+mLat(u*sn+v*cs), b, zz, h)}
+  var zP=Math.max(z,zLift(H)), so=o.sori===undefined?.7:o.sori;
+  var spF=o.sorin===undefined?.26:o.sorin, spire=H*spF;
+  var plinth=o.plinth===undefined?Math.max(.7,H*.03):o.plinth;
+  var dE=(H-spire-plinth)/n;                    /* eave to eave */
+
+  /* the stone plinth, wider than the bottom eave — a pagoda stands on a base you can
+     walk round, and without it the bottom roof floats */
+  var pw2=W*.62, np2=Math.max(12,Math.round(8*pw2/2.2));
+  for(i=0;i<np2;i++){
+    var s=i/np2*4, qu,qv;
+    if(s<1){qu=-pw2+2*pw2*s;qv=-pw2}else if(s<2){qu=pw2;qv=-pw2+2*pw2*(s-1)}
+    else if(s<3){qu=pw2-2*pw2*(s-2);qv=pw2}else{qu=-pw2;qv=pw2-2*pw2*(s-3)}
+    put(qu+agauss()*.3,qv+agauss()*.3,z,0);
+    put(qu,qv,zP,plinth);
+  }
+
+  for(k=0;k<n;k++){
+    var t=n>1?k/(n-1):0;
+    /* the taper. The top roof of a five-storey pagoda is a little over half the
+       bottom one — less than that and it reads as a spire, more and as a tower. */
+    var ew=W*.5*(1-.44*t), bw=ew*.5;
+    var eaveH=plinth+dE*(k+1), wallH=eaveH-dE*.52;
+    /* the wall band: corner posts and the rail between them, only as much as shows
+       between one roof and the next */
+    var nvw=Math.max(2,Math.round((eaveH-wallH)/1.1));
+    for(i=0;i<4;i++){
+      var wu=(i===0||i===3?-bw:bw), wv=(i<2?-bw:bw);
+      for(var q=0;q<=nvw;q++)put(wu,wv,zP,wallH+(eaveH-wallH)*q/nvw);
+    }
+    var nsw=Math.max(2,Math.round(bw*2/1.5));
+    for(i=0;i<=nsw;i++){
+      var su=-bw+2*bw*i/nsw;
+      put(su,-bw,zP,eaveH-dE*.1);put(su,bw,zP,eaveH-dE*.1);
+      put(-bw,su,zP,eaveH-dE*.1);put(bw,su,zP,eaveH-dE*.1);
+    }
+    /* a pyramid, not a hipped roof: rl=0. Every pagoda roof in the country comes to a
+       point, and the flare on it is stronger than a hall's — these are the deepest
+       eaves in the architecture. */
+    roofSurface(function(u,v,hgt,late){put(u,v,late?zP*1.9:zP*1.05,hgt)},
+                0, ew, ew, eaveH, eaveH+dE*.62, so, o.tileP||1.6);
+  }
+
+  /* the sorin: mast, nine rings, and the flame at the tip */
+  var topH=plinth+dE*n+dE*.62, nm=Math.max(4,Math.round(spire/1.3));
+  for(i=0;i<=nm;i++)put(agauss()*.12,agauss()*.12,zP,topH+spire*i/nm);
+  var rings=o.rings===undefined?9:o.rings, r0=spire*.22, r1=spire*.74;
+  for(k=0;k<rings;k++){
+    var rt=rings>1?k/(rings-1):0, rr=W*.115*(1-.4*rt), rhh=topH+r0+(r1-r0)*rt;
+    var nr=Math.max(5,Math.round(TAU*rr/.7));
+    for(i=0;i<nr;i++){var a2=i/nr*TAU;put(Math.cos(a2)*rr,Math.sin(a2)*rr,zP*1.3,rhh)}
+  }
+}
+
 /* A precinct is a table of halls placed in metres east and north of one anchor.
    [eastM, northM, widthM, depthM, rotDeg, zMul?, opts?] — the whole complex moves
    by editing one coordinate, which is the only way authoring fifty of these stays
@@ -1084,6 +1273,87 @@ function precinct(lng,lat,halls,b,z){
   for(var i=0;i<halls.length;i++){
     var h=halls[i];
     hall(lng+mLat(h[0])*ax, lat+mLat(h[1]), h[2],h[3],h[4]||0, b, z*(h[5]||1), h[6]);
+  }
+}
+
+/* Water, which this guide had no way of drawing at all — and three of its best places
+   are buildings standing in it. Kinkaku-ji is a pavilion and its reflection; Byodo-in
+   is a hall laid out to be seen across a pond and is on the ten-yen coin from that
+   angle; Ginkaku-ji's garden is half water.
+
+   In ink a pond is not a filled shape. It is an edge, and a few strokes lying flat
+   inside it, and the paper doing the rest — fill it in and it reads as a car park. The
+   edge is deliberately lobed rather than round, because a circular pond reads as a
+   pool and every one of these was dug to look like a coastline. Everything here is at
+   height zero, which is what makes it read as water next to a building that is not. */
+function pond(lng,lat,rM,b,z,o){
+  o=o||{};
+  var ax=aspect(lat),r=mLat(rM),ea=o.ea||1,eb=o.eb||1,i;
+  var th=(o.rot||0)*D2R,cs=Math.cos(th),sn=Math.sin(th);
+  var lob=o.lobes===undefined?3:o.lobes,amp=o.amp===undefined?.16:o.amp,ph=o.phase||1.7;
+  function edge(a){return 1+amp*Math.sin(a*lob+ph)+amp*.45*Math.sin(a*(lob+2)-ph*1.7)}
+  var n=Math.max(48,Math.round(TAU*rM/(o.pitch||1.6)));
+  /* two contours a metre or so apart, not one line. A single ring reads as a
+     drawn circle; two read as a bank with a waterline under it, which is what
+     tells you which side of the edge is wet. */
+  for(var ring=0;ring<2;ring++)for(i=0;i<n;i++){
+    var a=i/n*TAU,rr=r*edge(a)*(ring?.975:1);
+    var dx=Math.cos(a)*rr*ea,dy=Math.sin(a)*rr*eb;
+    push(lng+(dx*cs-dy*sn)*ax+agauss()*mLat(.45)*ax,
+         lat+(dx*sn+dy*cs)+agauss()*mLat(.45), b, ring?z*1.5:z, 0);
+  }
+  /* The surface. Not stipple — stipple in the middle of an outline reads as gravel,
+     which is what the first attempt at this looked like. Water in ink is a handful of
+     long strokes lying parallel, broken, with far more paper than line; the eye reads
+     the direction and fills in the rest. Drawn along the pond's long axis, so a pond
+     stretched east-west gets strokes running east-west. */
+  var nl2=o.rip===undefined?Math.max(4,Math.round(rM/7)):o.rip;
+  for(i=0;i<nl2;i++){
+    var fy=(i+.5)/nl2*2-1, span=Math.sqrt(Math.max(0,1-fy*fy));
+    var half=r*eb===0?0:r*span*ea*(.30+.42*arnd());
+    var yy2=fy*r*eb*.80, x02=(arnd()-.5)*r*ea*.35;
+    var np3=Math.max(3,Math.round(half*2/(o.dash||1.9)));
+    for(var q=0;q<=np3;q++){
+      if(arnd()<.22)continue;                 /* the breaks are the water */
+      var xx2=x02-half+2*half*q/np3;
+      push(lng+(xx2*cs-yy2*sn)*ax, lat+(xx2*sn+yy2*cs)+agauss()*mLat(.22),
+           b, z*(o.ripZ||1.9), 0);
+    }
+  }
+  /* an island or two. Every stroll garden in Kyoto has them, they are what the
+     composition is arranged around, and one dark clump reads as land against the
+     empty water in a way nothing else does. */
+  if(o.isles)for(i=0;i<o.isles.length;i++){
+    var il=o.isles[i];
+    blob(lng+mLat(il[0])*ax, lat+mLat(il[1]), il[2], il[3]||14, b, z*1.4,
+         {conc:1.5,h:il[4]||3.5,stem:.6,crown:.5,hz:z*2});
+  }
+}
+
+/* A solid of revolution from a profile of [height, radius] pairs — rings up the form,
+   plus a few verticals so it reads as a body and not as a stack of hoops. The guide
+   needs it exactly once, for a thing it would otherwise have to lie about: the Kamakura
+   Daibutsu sits in the open air, its hall having been washed away by the sea in 1498,
+   and drawing a hall over it would be drawing the one building everyone knows is not
+   there. A seated figure is a silhouette anyone can read — a wide lap, a narrowing
+   body, shoulders, and that head. */
+function revolve(lng,lat,b,z,prof,o){
+  o=o||{};
+  var ax=aspect(lat),i,k,pitch=o.pitch||.55;
+  var zR=Math.max(z,zLift(prof[prof.length-1][0]));
+  var lastH=0;
+  for(k=0;k<prof.length;k++){
+    var h1=prof[k][0],r1=prof[k][1],h0=k?prof[k-1][0]:0,r0=k?prof[k-1][1]:prof[0][1];
+    var steps=Math.max(1,Math.round((h1-h0)/pitch));
+    for(i=(k?1:0);i<=steps;i++){
+      var t=steps?i/steps:0, hh=h0+(h1-h0)*t, rr=r0+(r1-r0)*t;
+      var n=Math.max(6,Math.round(TAU*rr/(o.ring||.7)));
+      for(var q=0;q<n;q++){
+        var a=(q+arnd()*.4)/n*TAU;
+        push(lng+Math.cos(a)*mLat(rr)*ax, lat+Math.sin(a)*mLat(rr), b, zR, hh);
+      }
+      lastH=hh;
+    }
   }
 }
 
@@ -1134,15 +1404,27 @@ function SITE(name,fn){
   /* Extent and tallest point, measured once here. The 90th percentile radius rather
      than the maximum, because a tier-0 presence blob is several hundred metres across
      and would frame every temple on its halo. */
-  var ax=Math.cos(c[1]*D2R)*111320,ds=[],h=0,i;
+  var ax=Math.cos(c[1]*D2R)*111320,ds=[],db=[],h=0,i;
   for(i=i0;i<NPTS;i++){
-    var e=(PX[i]-c[0])*ax, n=(myInv(PY[i])-c[1])*110574;
-    ds.push(Math.sqrt(e*e+n*n));
+    var e=(PX[i]-c[0])*ax, n=(myInv(PY[i])-c[1])*110574,d=Math.sqrt(e*e+n*n);
+    ds.push(d);
     var m=PH[i]*110574*Math.cos(c[1]*D2R);if(m>h)h=m;
+    if(m>1.6)db.push(d);
   }
-  ds.sort(function(a,b){return a-b});
+  var asc=function(a,b){return a-b};
+  ds.sort(asc);db.sort(asc);
+  /* Two radii, because the map and the portrait want different answers.
+     r is everything, which is what the camera should fly to: arriving at Osaka Castle
+     and not seeing the moat would be wrong.
+     rb is only the points that stand up, which is what the portrait should frame. The
+     portrait framed on r drew the castle as a four-pixel speck in nine hundred metres
+     of water, Nijo as two dots inside a rectangle, and the Golden Pavilion — the most
+     photographed building in Kyoto — as two grains in an empty field. A moat is flat
+     and a keep is not, and that difference is already in the data. */
   AUTHORED.push({name:name,lng:c[0],lat:c[1],i0:i0,i1:NPTS,
-                 r:ds.length?ds[Math.floor(ds.length*.9)]:0, h:h});
+                 r:ds.length?ds[Math.floor(ds.length*.9)]:0,
+                 rb:db.length>=30?Math.max(6,db[Math.floor(db.length*.93)]):
+                    (ds.length?ds[Math.floor(ds.length*.9)]:0), h:h});
 }
 
 function buildCloud(){
@@ -1317,13 +1599,33 @@ function buildSites(){
   SITE('Kiyomizu-dera',function(lng,lat,Z){
     blob(lng,lat,150,52,7,Z[0],{conc:1.3});
     precinct(lng,lat,[
-      [   0,   0, 36,22, 12, 1,   {h0:13,h:15,roof:20,bays:3.6}],          /* hondo, up on the cliff */
-      [ -28,  -6, 20,17, 12, 1,   {posts:3.4,solid:.05,ridge:false,h0:13}],/* the stage, standing on nothing but posts */
-      [  26,  34, 12,12, 12, 1,   {h:9,roof:12}],                          /* Jishu-jinja */
-      [ -96, -34, 11,11, 12, 1,   {h:10,roof:14}],                         /* Nio-mon */
-      [-118, -30,  9, 9, 12, 1,   {h:8,roof:11}],
-      [-104, -52,  8, 8, 12, 1.4, {h:28,roof:31,bays:2.4}]                 /* three-storey pagoda */
+      [   0,   0, 36,22, 12, 1,   {h0:13,h:15,roof:22,bays:2.4,eave:3.4,engawa:1.8}], /* hondo, up on the cliff */
+      [ -28,  -6, 20,17, 12, 1,   {posts:2.6,solid:.05,ridge:false,h0:13}],/* the stage, standing on nothing but posts */
+      [  26,  34, 12,12, 12, 1,   {h:9,roof:12,podium:.8}],                /* Jishu-jinja */
+      [ -96, -34, 11,11, 12, 1,   {h:10,roof:14,podium:.8}],               /* Nio-mon */
+      [-118, -30,  9, 9, 12, 1,   {h:8,roof:11}]
     ],7,Z[1]);
+    /* The keyaki scaffold. The stage is famous for standing 13m off the hillside on a
+       lattice of pillars tied with nothing but crossbeams, and the posts alone drew the
+       pillars without the lattice — a bed of nails rather than a structure. The tiers
+       of horizontal ties are what make it read as built. */
+    (function(){
+      var ax=aspect(lat),rr=12*D2R,cs=Math.cos(rr),sn=Math.sin(rr);
+      function pp(u,v,zz,h){push(lng+mLat(u*cs-v*sn)*ax,lat+mLat(u*sn+v*cs),7,zz,h)}
+      var zS=Math.max(Z[1],zLift(13));
+      for(var ti=1;ti<=4;ti++){
+        var th2=13*ti/4.6, nu=Math.max(4,Math.round(20/2.2)), nv=Math.max(4,Math.round(17/2.2));
+        for(var i=0;i<=nu;i++){pp(-38+20*i/nu,-14.5,zS*1.3,th2);pp(-38+20*i/nu,2.5,zS*1.3,th2)}
+        for(i=0;i<=nv;i++){pp(-38,-14.5+17*i/nv,zS*1.3,th2);pp(-18,-14.5+17*i/nv,zS*1.3,th2)}
+      }
+    })();
+    /* the three-storey pagoda, which is the other half of every photograph of this
+       place — the orange one standing clear of the trees below the stage */
+    (function(){
+      var ax=aspect(lat),rr=12*D2R,u=-104,v=-52;
+      pagoda(lng+mLat(u*Math.cos(rr)-v*Math.sin(rr))*ax,
+             lat+mLat(u*Math.sin(rr)+v*Math.cos(rr)),7,Z[1],{n:3,h:31,w:9.5,rot:12});
+    })();
     corridor([[135.78050,34.99560],[135.78270,34.99500],[135.78400,34.99470]],7,4.5,6,Z[2],{rail:2.2,fill:.25});
   });
 
@@ -1339,10 +1641,10 @@ function buildSites(){
        four kilometres of mountain. Two corridors, at the two pitches, and the place
        reads: a dense black mass at the bottom and a trail fading up the hill. */
     corridor([[135.77270,34.96710],[135.77415,34.96768],[135.77530,34.96722]],
-             3,3.4,7,Z[1],{rail:1.4,fill:.08,ribs:1.25,ribZ:Z[2],ribH:3.1,hz:Z[2]});
+             3,3.4,7,Z[1],{rail:1.4,fill:.08,ribs:1.25,ribZ:Z[2],ribH:3.1,hz:Z[2],gate:1,ribOut:.95});
     corridor([[135.77530,34.96722],[135.77690,34.96795],[135.77772,34.96700],
               [135.77905,34.96742],[135.78010,34.96690]],
-             4,4.2,7,Z[1],{rail:1.6,fill:.1,ribs:13,ribZ:Z[2],ribH:4,hz:Z[2]});
+             4,4.2,7,Z[1],{rail:1.6,fill:.1,ribs:13,ribZ:Z[2],ribH:4,hz:Z[2],gate:1,ribOut:.95});
   });
 
   /* Pontocho. Four and a half metres wide, five blocks long, and that ratio is the
@@ -1370,24 +1672,49 @@ function buildSites(){
   /* A pavilion is not a box. Both of these are storeys that step in as they rise, and
      that taper is the entire silhouette — one 11m block over a pond was a shed. h0
      stacks them: each storey starts where the one below stopped. */
+  /* Kinkaku-ji is a small building. Twelve and a half metres square and three storeys,
+     which is a house — and the reason anyone comes is that it stands at the edge of
+     Kyoko-chi with the whole of it in the water. Drawn without the pond it was two
+     grains in an empty field, and drawn without the islands the pond was a puddle. */
   SITE('Kinkaku-ji',function(lng,lat,Z){
-    blob(lng+.00055,lat-.00035,95,150,1,Z[1],{hollow:.55});     /* the pond it stands in */
-    precinct(lng,lat,[[0,0,12.5,12.5,20,1.2,{h:4.6,roof:5.3,bays:2.4}],
-                      [0,0,10.5,10.5,20,1.2,{h0:4.6,h:4.2,roof:5.0,bays:2.2}],
-                      [0,0, 7.5, 7.5,20,1.4,{h0:8.8,h:3.4,roof:5.4,bays:2}],
-                      [62,40,9,9,20,1,{h:6,roof:8}]],7,Z[1]);
+    var ax=aspect(lat);
+    pond(lng+mLat(20)*ax,lat-mLat(30),34,7,Z[1],
+         {ea:1.5,eb:.9,rot:12,lobes:3,amp:.2,rip:26,
+          isles:[[-6,2,5,12,3.4],[16,-10,4,9,2.6],[30,6,3,7,2.2]]});
+    /* Three storeys, and they have to read as three. Each roof was rising past the
+       floor of the storey above it, so the whole pavilion came out one dark lump; the
+       eaves are the only thing separating the shinden floor from the samurai floor
+       from the Chinese-style top, and they are why the building is worth its fame. */
+    precinct(lng,lat,[[0,0,12.5,12.5,20,1.2,{h:4.3,roof:5.3,bays:1.6,eave:2.4,engawa:1.5,podium:.5,solid:.05}],
+                      [0,0,11.0,11.0,20,1.25,{h0:5.1,h:3.6,roof:4.6,bays:1.6,eave:2.2,solid:.04}],
+                      [0,0, 7.8, 7.8,20,1.4,{h0:9.4,h:3.1,roof:4.7,bays:1.4,eave:2.0,sori:.85,solid:.04}],
+                      [62,40,9,9,20,1,{h:6,roof:8,podium:.6}]],7,Z[1]);
+    /* the golden phoenix on the ridge, which is the finial the building is named for */
+    (function(){var zf=Math.max(Z[1],zLift(15));
+      for(var q=0;q<7;q++)push(lng,lat,7,zf,14.1+q*.28);
+      for(q=-3;q<=3;q++)push(lng+mLat(q*.42)*aspect(lat),lat,7,zf*1.4,15.4-Math.abs(q)*.16);})();
   });
 
   SITE('Ginkaku-ji',function(lng,lat,Z){
     blob(lng,lat,110,40,7,Z[0],{conc:1.3});
-    precinct(lng,lat,[[0,0,10.5,10.5,15,1.2,{h:3.9,roof:4.5,bays:2.2}],
-                      [0,0, 8.4, 8.4,15,1.2,{h0:3.9,h:3.3,roof:4.7,bays:2}],
-                      [24,-14,16,12,15,1,{h:6,roof:8}],
-                      [-18,20,13,9,15,1,{h:5,roof:7}]],7,Z[1]);
+    precinct(lng,lat,[[0,0,10.5,10.5,15,1.3,{h:3.9,roof:5.2,bays:1.6,eave:1.9,podium:.6,engawa:1.2}],
+                      [0,0, 8.4, 8.4,15,1.3,{h0:3.9,h:3.3,roof:5.6,bays:1.6,eave:1.8,sori:.82}],
+                      [24,-14,16,12,15,1,{h:6,roof:9,podium:.7}],
+                      [-18,20,13,9,15,1,{h:5,roof:7.5,podium:.6}]],7,Z[1]);
     /* The Sea of Silver Sand and the cone standing in it, which is the half of
-       Ginkaku-ji that is not a building. */
+       Ginkaku-ji that is not a building. The sand is raked, and the rake is the whole
+       reason it is not a car park: parallel furrows, all lying one way. */
     blob(lng-.00034,lat+.00020,24,60,7,Z[2],{conc:.6,ea:1.35});
-    precinct(lng,lat,[[-31,20,5,5,15,1.4,{h:1.8,roof:2.4,ridge:false,bays:1.6}]],7,Z[2]);
+    (function(){
+      var ax=aspect(lat),zr=Z[2]*1.4;
+      for(var g2=-7;g2<=7;g2++)for(var i=0;i<26;i++)
+        push(lng-.00034+mLat(-24+48*i/25)*ax, lat+.00020+mLat(g2*2.6)+agauss()*mLat(.25),
+             7,zr,0);
+    })();
+    precinct(lng,lat,[[-31,20,5,5,15,1.4,{h:1.8,roof:2.4,ridge:false,bays:1.6,tiles:false}]],7,Z[2]);
+    /* Kinkyo-chi, the pond the Silver Pavilion actually stands on */
+    pond(lng+mLat(20)*aspect(lat),lat+mLat(-16),26,7,Z[1],
+         {ea:1.3,eb:.8,rot:24,lobes:4,amp:.2,rip:14,isles:[[4,2,4,8,2.6]]});
   });
 
   SITE("Philosopher's Path",function(lng,lat,Z){
@@ -1395,10 +1722,24 @@ function buildSites(){
              5,6,7,Z[1],{rail:2,ribs:11,ribZ:Z[2],ribH:7,hz:Z[2]});            /* the ribs are the cherries */
   });
 
+  /* Nijo's keep burned in 1750 and was never rebuilt, so the thing to draw is Ninomaru
+     Palace — five wings stepped diagonally off each other so that no room is overlooked
+     from the next, which is the whole plan of the place and is why it is a zigzag on
+     every map of it. Two boxes inside a moat said nothing at all. */
   SITE('Nijo Castle',function(lng,lat,Z){
     corridor([[135.74560,35.01180],[135.75130,35.01180],[135.75130,35.01640],[135.74560,35.01640]],
              48,14,1,Z[0],{fill:0,closed:true,rail:4});
-    precinct(lng,lat,[[-60,-40,44,28,0,1,{h:8,roof:13,bays:4}],[70,50,20,20,0,1.2,{h:9,roof:12}]],7,Z[1]);
+    var wings=[],ux=-96,uy=-64;
+    for(var wi=0;wi<5;wi++){
+      wings.push([ux,uy,25-wi*1.6,17,0,1,
+                  {h:7.5,roof:12.5,bays:2.2,eave:2.4,podium:.9,sori:.68}]);
+      ux+=21;uy+=15;                                     /* the step */
+    }
+    wings.push([70,50,20,20,0,1.2,{h:9,roof:13,podium:.8}]);   /* Karamon */
+    precinct(lng,lat,wings,7,Z[1]);
+    /* the inner moat and the empty stone platform the keep stood on */
+    pond(lng+mLat(-150)*aspect(lat),lat+mLat(120),46,7,Z[1],{ea:1.5,eb:1,rot:0,lobes:2,amp:.05,rip:10});
+    precinct(lng,lat,[[-150,120,26,26,0,1,{h:11,roof:11,ridge:false,solid:.28,bays:5,tiles:false}]],7,Z[1]);
   });
 
   /* Sanjusangen-do is 120 metres of one hall. The building *is* the site. */
@@ -1407,16 +1748,32 @@ function buildSites(){
   });
 
   SITE('Heian Jingu',function(lng,lat,Z){
-    precinct(lng,lat,[[0,0,34,20,0,1,{h:10,roof:17,bays:3.6}],[-40,-30,16,12,0,1,{h:7,roof:10}],[40,-30,16,12,0,1,{h:7,roof:10}]],7,Z[1]);
-    corridor([[135.78230,35.01300],[135.78230,35.01560]],24,7,7,Z[1],{rail:3,ribs:26,ribZ:Z[1],ribH:24,hz:Z[1]});  /* the great torii approach */
+    precinct(lng,lat,[[0,0,34,20,0,1,{h:10,roof:18,bays:2.2,eave:3.6,podium:1.5,engawa:2}],
+                      [-40,-30,16,12,0,1,{h:7,roof:11,podium:.8}],
+                      [ 40,-30,16,12,0,1,{h:7,roof:11,podium:.8}],
+                      /* the two-storey Soryu-ro and Byakko-ro towers on the flanking wall */
+                      [-62, 14,11,11,0,1.2,{h:9,roof:12,podium:.7}],
+                      [ 62, 14,11,11,0,1.2,{h:9,roof:12,podium:.7}]],7,Z[1]);
+    /* The otorii is 24m, the largest thing in this guide that is not a tower, and it
+       stands half a kilometre down the approach with nothing near it. One of them,
+       drawn properly, rather than twenty-six identical ribs down a corridor. */
+    corridor([[135.78230,35.01300],[135.78230,35.01560]],24,7,7,Z[1],{rail:3,fill:.12});
+    (function(){
+      var ax=aspect(lat);
+      toriiForm(function(off,hgt){push(135.78230+mLat(off)*ax,35.01330,7,Math.max(Z[0],zLift(24)),hgt)},11,24);
+    })();
   });
 
   /* Tokyo */
   SITE('Senso-ji',function(lng,lat,Z){
     blob(lng,lat,140,44,7,Z[0],{conc:1.3});
-    precinct(lng,lat,[[0,0,34,30,0,1,{h:18,roof:30,bays:3.8}],   /* the hondo */
-      [0,-46,14,12,0,1,{h:9,roof:11.7}],                       /* Kaminarimon */
-      [-30,-10,9,9,0,1.5,{h:47,roof:53,bays:2.4}]],7,Z[1]);    /* the five-storey pagoda */
+    precinct(lng,lat,[[0,0,34,30,0,1,{h:18,roof:32,bays:2.2,eave:4.2,podium:2.2,engawa:2.4,sori:.72}],
+      [0,-46,14,12,0,1,{h:9,roof:13,podium:.8}],               /* Kaminarimon */
+      [0,-96,16,13,0,1,{h:10,roof:14,podium:.9}]],7,Z[1]);     /* Hozomon */
+    /* the five-storey pagoda, 53m, second tallest in Japan and the thing on the left
+       of every photograph taken through the Kaminarimon lantern */
+    (function(){var ax=aspect(lat);
+      pagoda(lng+mLat(-30)*ax,lat+mLat(-10),7,Z[1],{n:5,h:53,w:12.5,rot:0})})();
     corridor([[139.79633,35.71100],[139.79655,35.71430]],9,4.5,7,Z[1],{rail:3,fill:.15,ribs:4.2,ribZ:Z[2],ribH:4,hz:Z[2]});
   });
 
@@ -1438,8 +1795,38 @@ function buildSites(){
                       [ 70,-70,32,30,0,1,{h:58,roof:60,bays:5}]],7,Z[1]);
   });
 
+  /* 634 metres, and it was drawn as a cone: three rings and six spokes, which is a
+     faint triangle standing where the tallest structure in Japan is. The shape is
+     specific and famous — a three-legged base on a footprint the size of a city block,
+     drawing in to a shaft that is round where the base is triangular, two observation
+     decks bulging off it at 350 and 450, and a bare spire above them. */
   SITE('Tokyo Skytree',function(lng,lat,Z){
-    cone(lng,lat,{rings:3,spokes:6,r0:26,r1:120,n0:10,n1:24,b:7,z0:Z[1],z1:Z[2],jit:4,peak:634});
+    var ax=aspect(lat),zT=Math.max(Z[0],zLift(634)),i,j,q;
+    function ring(h,r,n2,zz){for(q=0;q<n2;q++){var a=(q+arnd()*.4)/n2*TAU;
+      push(lng+Math.cos(a)*mLat(r)*ax,lat+Math.sin(a)*mLat(r),7,zz||zT,h)}}
+    /* the tripod: three legs from a 34m half-span, closing to the shaft at 130m */
+    for(i=0;i<3;i++){
+      var a0=i/3*TAU+.5,n3=76;
+      for(j=0;j<=n3;j++){
+        var t=j/n3,hh=130*t,rr=34-(34-11)*Math.pow(t,.72);
+        for(var e2=-1;e2<=1;e2+=2){
+          var aa=a0+e2*(1-t)*.34;
+          push(lng+Math.cos(aa)*mLat(rr)*ax,lat+Math.sin(aa)*mLat(rr),7,zT,hh);
+        }
+      }
+    }
+    /* the shaft, round and very slightly tapered, with the diagrid on it */
+    for(j=0;j<=34;j++){var t2=j/34,h2=130+340*t2,r2=11-3*t2;ring(h2,r2,8)}
+    for(i=0;i<10;i++)for(j=0;j<34;j++){
+      var t3=j/34,h3=130+340*t3,r3=11-3*t3,ang=i/10*TAU+t3*2.1*(i%2?1:-1);
+      push(lng+Math.cos(ang)*mLat(r3)*ax,lat+Math.sin(ang)*mLat(r3),7,Math.max(zT,Z[2]),h3);
+    }
+    /* Tembo Deck at 350 and the Galleria at 450 — the two bulges that say Skytree */
+    for(j=0;j<=4;j++)ring(345+j*2.8,19-Math.abs(j-2)*1.4,18);
+    for(j=0;j<=3;j++)ring(443+j*3,14-Math.abs(j-1.5)*1.1,14);
+    /* the gain tower */
+    for(j=0;j<=40;j++){var t4=j/40;ring(470+164*t4,7.5-6.6*t4,Math.max(3,Math.round(6-4*t4)))}
+    blob(lng,lat,150,60,7,Z[0],{conc:1.5});
   });
 
   /* Osaka */
@@ -1449,8 +1836,12 @@ function buildSites(){
              70,16,1,Z[0],{fill:0,closed:true,rail:5});
     /* The keep stands on a stone base, so the base has to be drawn or the tower
        floats: the rampart rings are 90m out and there was nothing under the middle. */
-    precinct(lng,lat,[[0,0,34,34,0,1,{h:20,roof:20,ridge:false,solid:.3,bays:6}],   /* the stonework */
-                      [0,0,26,26,0,1.3,{h0:20,h:35,roof:42,bays:3}]],7,Z[1]);      /* the keep on top */
+    /* Eight tiers of eaves on a twenty-metre stone base. Drawn as one box with a hat
+       the most recognisable building in Osaka read as a dark speck; the steps are the
+       silhouette, and they are the only reason you can tell a tenshu from a tower. */
+    precinct(lng,lat,tenshuRows(
+      [[0,0,34,34,0,1,{h:20,roof:20,ridge:false,solid:.3,bays:4,tiles:false}]],
+      26,35,20,0,5),7,Z[1]);
   });
 
   SITE('Dotonbori',function(lng,lat,Z){
@@ -1461,9 +1852,17 @@ function buildSites(){
   /* Nara */
   SITE('Todai-ji',function(lng,lat,Z){
     blob(lng,lat,180,50,7,Z[0],{conc:1.2});
-    precinct(lng,lat,[[0,0,57,50,0,1,{ridgeP:4,h:30,roof:48.7,bays:4.2}],   /* the largest wooden building there is */
-      [0,-120,26,18,0,1,{h:19,roof:25,bays:3.6}],                          /* Nandaimon */
-      [-140,-60,12,12,0,1,{h:8,roof:11}]],7,Z[1]);
+    precinct(lng,lat,[
+      /* 57m by 50m and 48m to the ridge — still the largest wooden building on earth
+         even at two thirds of its original width, so the eave oversail is enormous */
+      [0,0,57,50,0,1,{ridgeP:4,h:30,roof:48.7,bays:2.4,eave:6.5,podium:2.6,sori:.7}],
+      [0,-120,26,18,0,1,{h:19,roof:27,bays:2.4,eave:3.4,podium:1.4}],      /* Nandaimon */
+      [-140,-60,12,12,0,1,{h:8,roof:11,podium:.7}]],7,Z[1]);
+    /* the roofed corridor that encloses the Daibutsuden's court, which is what makes
+       the hall read as standing in a precinct rather than in a field */
+    corridor([[lng-mLat(78)*aspect(lat),lat-mLat(86)],[lng+mLat(78)*aspect(lat),lat-mLat(86)],
+              [lng+mLat(78)*aspect(lat),lat+mLat(62)],[lng-mLat(78)*aspect(lat),lat+mLat(62)]],
+             7,5,7,Z[1],{closed:true,rail:2.2,fill:.1,railH:6,hzRail:Z[1]});
   });
 
   SITE('Nara Park',function(lng,lat,Z){
@@ -1512,14 +1911,21 @@ function temple(lng,lat,Z,o){
         for(var v3=1;v3<=nv2;v3++)push(wx,wy,7,zh2,wh*v3/nv2)}
     }
   }
-  var rows=[[0,0,w,d,r,1,{h:eh,roof:eh*1.55,bays:3.6}],
-            [0,-(d*.5+30),w*.44,10,r,1,{h:8,roof:11}]];          /* the gate */
-  /* storeys, not metres: a five-storey pagoda is about 50m and 11m across, and that
-     ratio is what makes it read as a pagoda rather than a chimney. */
-  if(o.pag)rows.push([-(w*.5+20),-16,o.pag*2.1,o.pag*2.1,r,1.3,
-                      {h:o.pag*8.8,roof:o.pag*9.9,bays:2.4}]);
+  var rows=[[0,0,w,d,r,1,{h:eh,roof:eh*1.55,podium:o.podium===undefined?1.3:o.podium,engawa:o.engawa}],
+            /* the gate is a two-storey tower on this scale of temple, not a shed:
+               a Sanmon is the tallest thing on the axis until you reach the pagoda */
+            [0,-(d*.5+30),w*.46,11,r,1,{h:o.gateH||11,roof:(o.gateH||11)*1.5,podium:.7}]];
   if(o.halls)for(i=0;i<o.halls.length;i++)rows.push(o.halls[i]);
   precinct(lng,lat,rows,7,Z[1]);
+  /* storeys, not metres. A five-storey pagoda is around 33m and 11m across the
+     bottom eave, and o.pagH overrides where the guide knows better — To-ji's is 55m
+     and the tallest wooden building in the country, Chureito's is a fraction of that. */
+  if(o.pag){
+    var ax1=aspect(lat),pa=o.pagAt||[-(w*.5+20),-16],pu=pa[0],pv=pa[1],rr1=r*D2R;
+    pagoda(lng+mLat(pu*Math.cos(rr1)-pv*Math.sin(rr1))*ax1,
+           lat+mLat(pu*Math.sin(rr1)+pv*Math.cos(rr1)), 7, Z[1],
+           {n:o.pag,h:o.pagH||o.pag*6.6,w:o.pagW||o.pag*2.2,rot:r});
+  }
 }
 
 /* The approach and its torii are the whole difference between a shrine and a temple
@@ -1552,15 +1958,34 @@ function shrine(lng,lat,Z,o){
   var L=o.app||150;
   corridor([[lng-Math.sin(rr)*mLat(L)*ax, lat-Math.cos(rr)*mLat(L)],[lng,lat]],
            o.appW||10,6,7,Z[1],{rail:2.4,fill:.15,ribs:o.torii||18,ribZ:Z[2],
-                                ribH:o.toriiH||8,hz:Z[2]});
+                                ribH:o.toriiH||8,hz:Z[2],gate:1,ribOut:o.ribOut||.9});
+}
+
+/* A tenshu is a stack, and the stack is the whole of what a Japanese castle looks
+   like: five or six storeys, each a little smaller than the one below, each with its
+   own roof and its own line of eaves, so the silhouette is a series of steps rather
+   than a wall. One tall box with a single roof on top — which is what this was — is an
+   office block in a hat, and it was the reason Osaka Castle read as a dark speck.
+   Drawn as stacked halls, so every tier gets the same walls, eaves and sori as
+   everything else in the guide. */
+function tenshuRows(rows,w,h,h0,r,n){
+  var dT=h/n;
+  for(var k=0;k<n;k++){
+    var t=n>1?k/(n-1):0, tw=w*(1-.46*t), body=dT*.68;
+    rows.push([0,0,tw,tw*(k?1:.94),r,1.15+k*.05,
+               {h0:h0+dT*k, h:body, roof:body+dT*.52, bays:2.0,
+                eave:Math.max(1.0,tw*.12), sori:.72, ridgeP:2.6}]);
+  }
+  return rows;
 }
 
 function keep(lng,lat,Z,o){
   o=o||{};
   var b=o.base||14,h=o.h||30,w=o.w||24,r=o.rot||0;
   blob(lng,lat,o.r||160,24,7,Z[0],{conc:1.4});
-  precinct(lng,lat,[[0,0,w*1.4,w*1.4,r,1,{h:b,roof:b,ridge:false,solid:.3,bays:6,tiles:false}],
-                    [0,0,w,w,r,1.3,{h0:b,h:h,roof:h*1.2,bays:3,floors:o.floors||4.2}]],7,Z[1]);
+  precinct(lng,lat,tenshuRows(
+    [[0,0,w*1.4,w*1.4,r,1,{h:b,roof:b,ridge:false,solid:.3,bays:6,tiles:false}]],
+    w,h,b,r,o.tiers||5),7,Z[1]);
   /* The batter. A castle keep is a timber box on a stone plinth that curves outward as
      it falls, and that curve is the single most recognisable thing about it — a
      straight-sided base reads as an office block with a hat on. */
@@ -1592,12 +2017,33 @@ function tower(lng,lat,Z,o){
   for(i=0;i<4;i++){
     var a=i/4*TAU+Math.PI/4;
     var ex=Math.cos(a)*mLat(sp*.5)*ax, ny=Math.sin(a)*mLat(sp*.5);
-    var n=Math.max(8,Math.round(h/7));
+    var n=Math.max(14,Math.round(h/3.4));
     for(j=0;j<=n;j++){var t=j/n;push(lng+ex*(1-t*.88), lat+ny*(1-t*.88), 7, zT, h*t)}
   }
-  if(o.deck)for(i=0;i<24;i++){
-    var a2=i/24*TAU;
-    push(lng+Math.cos(a2)*mLat(o.deck)*ax, lat+Math.sin(a2)*mLat(o.deck), 7, zT, h*(o.deckAt||.55));
+  /* The decks. A single ring of 24 dots is a hoop; an observation deck is a floor with
+     a thickness and a soffit under it, and it is the one horizontal in the whole
+     silhouette — the thing that stops a lattice tower reading as a pylon. */
+  if(o.deck){
+    /* a step later than the legs. At district zoom a tower is its silhouette; the
+       deck is a detail you only need once the silhouette is more than a few pixels. */
+    var zD=Math.max(zT,Z[1]);
+    for(var dk=0;dk<(o.deck2?2:1);dk++){
+      var dr=dk?o.deck2:o.deck, dh=h*(dk?(o.deck2At||.75):(o.deckAt||.55));
+      var nd2=Math.max(14,Math.round(TAU*dr/2.2));
+      for(var lv=0;lv<3;lv++)for(i=0;i<nd2;i++){
+        var a2=(i+arnd()*.4)/nd2*TAU, rr3=dr*(lv===2?.72:1);
+        push(lng+Math.cos(a2)*mLat(rr3)*ax, lat+Math.sin(a2)*mLat(rr3), 7, zD,
+             dh+lv*dr*.12);
+      }
+    }
+  }
+  /* the mast: above the top deck a tower is a bare pole, and leaving it off stops the
+     silhouette a third of the way short of the height the guide claims */
+  if(o.mast){
+    var m0=h*(o.deck2?(o.deck2At||.75):(o.deckAt||.55)),nm2=Math.max(6,Math.round((h-m0)/4));
+    for(i=0;i<=nm2;i++){var tm=i/nm2;
+      for(var e3=-1;e3<=1;e3+=2)
+        push(lng+e3*mLat(1.6*(1-tm*.7))*ax,lat,7,Math.max(zT,Z[1]),m0+(h-m0)*tm)}
   }
   /* The bracing between the legs, which is what a lattice tower is, and which only
      arrives once you are close enough for it to be more than a smudge. */
@@ -1675,17 +2121,68 @@ var ARCH=[
   ['Chureito Pagoda',            temple,{w:9,d:9,rot:24,h:8,pag:5,r:70,n:14}],
   ['Kofuku-ji',                  temple,{w:34,d:28,rot:0,h:14,pag:5,r:150}],
   ['Horyu-ji',                   temple,{w:28,d:22,rot:0,h:12,pag:5,r:170}],
-  ['Byodo-in',                   temple,{w:47,d:14,rot:0,h:9,r:150,
-                                         halls:[[-34,-6,12,10,0],[34,-6,12,10,0]]}],
+  /* The Phoenix Hall is not a temple hall, it is a bird: a centre block with a wing
+     thrown out each side and a tail running back, sited so the whole of it plus its
+     reflection reads as one shape from across Aji-ike. That is the composition on the
+     back of the ten-yen coin, and it is the only reason the building is famous. The
+     temple archetype's row of three boxes had none of it. */
+  ['Byodo-in', function(lng,lat,Z){
+    var ax=aspect(lat);
+    pond(lng,lat-mLat(52),62,7,Z[1],{ea:1.5,eb:.72,lobes:2,amp:.12,rip:34,
+                                     isles:[[-58,10,6,10,2.6]]});
+    blob(lng,lat,150,26,7,Z[0],{conc:1.3});
+    precinct(lng,lat,[
+      [0,0,14,11,0,1.25,{h:6.4,roof:11.5,bays:1.8,eave:2.6,podium:1.1,sori:.8}],   /* the chudo */
+      /* the wings: out to the side, then forward to the water, each ending in a
+         two-storey corner tower */
+      [-21,1,17,6,0,1.1,{h:4.2,roof:7.2,bays:1.8,eave:1.8,podium:.8}],
+      [ 21,1,17,6,0,1.1,{h:4.2,roof:7.2,bays:1.8,eave:1.8,podium:.8}],
+      [-30,-14,6,20,0,1.1,{h:4.2,roof:7.0,bays:1.8,eave:1.7,podium:.8}],
+      [ 30,-14,6,20,0,1.1,{h:4.2,roof:7.0,bays:1.8,eave:1.7,podium:.8}],
+      [-30,-27,7.5,7.5,0,1.3,{h:7,roof:10.5,bays:1.6,eave:1.6,podium:.8}],
+      [ 30,-27,7.5,7.5,0,1.3,{h:7,roof:10.5,bays:1.6,eave:1.6,podium:.8}],
+      [0,26,6,22,0,1.1,{h:3.8,roof:6.2,bays:1.8,eave:1.6,podium:.7}]                /* the tail */
+    ],7,Z[1]);
+  }, null],
   ['Ryoan-ji',                   temple,{w:24,d:14,rot:0,h:7,r:130}],
-  ['Kotoku-in Great Buddha',     temple,{w:13,d:11,rot:0,h:13,r:100,n:18}],
+  /* The hall went out to sea in a tsunami in 1498 and was never rebuilt, which is the
+     one fact everybody knows about this place. A temple hall drawn over it would be
+     drawing the building that is famously not there. */
+  ['Kotoku-in Great Buddha', function(lng,lat,Z){
+    blob(lng,lat,100,20,7,Z[0],{conc:1.4});
+    /* the stone plinth */
+    precinct(lng,lat,[[0,0,13,11,0,1,{h:2.4,roof:2.4,ridge:false,solid:.3,bays:3,tiles:false}]],7,Z[1]);
+    /* 11.3m of bronze on it: lap, body, shoulders, and the head */
+    revolve(lng,lat,7,Z[1],[[1.2,5.8],[2.6,5.2],[4.6,3.9],[7.0,3.1],[7.9,3.5],
+                            [8.5,1.3],[8.8,1.4],[10.4,2.0],[11.0,1.4],[11.4,.6]],
+                       {pitch:.5,ring:.8});
+    /* the two stone lanterns and the gate on the approach */
+    precinct(lng,lat,[[0,-38,10,8,0,1,{h:7,roof:10,podium:.7}]],7,Z[1]);
+  }, null],
   ['Nikko Tosho-gu',             temple,{w:26,d:20,rot:0,h:13,pag:5,r:150}],
   ['Kasuga Taisha',              shrine,{w:24,d:12,rot:104,h:10,app:220,torii:16,toriiH:7,r:160}],
   ['Sumiyoshi Taisha',           shrine,{w:26,d:14,rot:0,h:11,app:170,torii:20,toriiH:8,r:150}],
   ['Hakone Shrine',              shrine,{w:18,d:12,rot:56,h:9,app:190,torii:22,toriiH:9,r:130}],
-  ['Tokyo Tower',                tower, {h:333,base:88,deck:22,deckAt:.45,r:110}],
-  ['Tsutenkaku & Shinsekai',     tower, {h:103,base:26,deck:9,deckAt:.82,r:120}],
-  ['Umeda Sky Building',         tower, {h:173,base:52,deck:26,deckAt:.94,r:110}],
+  ['Tokyo Tower',                tower, {h:333,base:88,deck:26,deckAt:.45,deck2:13,deck2At:.75,mast:1,r:110}],
+  ['Tsutenkaku & Shinsekai',     tower, {h:103,base:26,deck:11,deckAt:.80,mast:1,r:120}],
+  /* Two towers with a hole in the sky between them: the Floating Garden is a bridged
+     ring across the top of both, and the tower archetype's four converging legs said
+     nothing about any of it. */
+  ['Umeda Sky Building', function(lng,lat,Z){
+    var ax=aspect(lat),i,q;
+    blob(lng,lat,110,20,7,Z[0],{conc:1.4});
+    precinct(lng,lat,[[-26,0,26,26,0,1.2,{h:150,roof:152,bays:5,floors:4.1,tiles:false}],
+                      [ 26,0,26,26,0,1.2,{h:150,roof:152,bays:5,floors:4.1,tiles:false}]],7,Z[1]);
+    var zU=Math.max(Z[0],zLift(173));
+    /* the observatory deck bridging them, with its round void in the middle */
+    for(var lv=0;lv<4;lv++)for(i=0;i<64;i++){
+      var t=i/64*TAU, rr=19+(lv===3?0:2);
+      var ux=Math.cos(t)*(rr+22*Math.sign(Math.cos(t))*0), uy=Math.sin(t)*rr;
+      push(lng+mLat(Math.cos(t)*39)*ax, lat+mLat(uy), 7, zU, 152+lv*2.6);
+    }
+    for(i=0;i<40;i++){var t2=i/40*TAU;
+      push(lng+mLat(Math.cos(t2)*15)*ax, lat+mLat(Math.sin(t2)*15), 7, zU*1.4, 160)}
+  }, null],
   ['Tokyo Skytree',              null,  null],      /* already hand-authored */
   ['Shinjuku Gyoen',             grove, {r:420,n:300,h:18,ea:1.2}],
   ['Ueno Park',                  grove, {r:420,n:300,h:19,eb:1.3}],
@@ -1714,8 +2211,12 @@ var ARCH=[
      way every other temple here has it — it is stated as halls instead of taken from
      the archetype's default. */
   ['Zojo-ji',                    temple,{w:32,d:26,rot:0,h:15,r:180}],
+  /* Shitenno-ji's pagoda stands on the axis directly in front of the kondo, which is
+     the oldest plan in Japanese Buddhism and the thing that makes this temple worth
+     drawing rather than one more Osaka temple. So it is placed, not left to the
+     archetype's off-to-one-side default. */
   ['Shitenno-ji',                temple,{w:26,d:20,rot:0,h:13,r:190,
-                                         halls:[[0,-26,11,11,0,1.3,{h:44,roof:50,bays:2.4}]]}],
+                                         pag:5,pagH:39,pagW:10,pagAt:[0,-30]}],
   ['Tofuku-ji',                  temple,{w:30,d:26,rot:0,h:17,r:200,
                                          halls:[[0,-70,26,13,0,1,{h:20,roof:26,bays:5}]]}],
   ['Kodai-ji',                   temple,{w:20,d:15,rot:24,h:11,r:130,n:20}],
@@ -3482,9 +3983,44 @@ var POR={},PORN=0,POR_YAW=28*D2R,POR_PIT=32*D2R;
 var PORSITE={};
 (function(){for(var i=0;i<AUTHORED.length;i++)if(!AUTHORED[i].missing)PORSITE[AUTHORED[i].name]=AUTHORED[i]})();
 
+/* Where the automatic framing gets it wrong, in metres of radius.
+
+   The frame is fitted to percentiles of whatever points a site has, which is right
+   almost everywhere and cannot possibly be right at Senso-ji: the site is a 40m temple
+   at the end of a 350m shopping street, the street has far more points than the temple,
+   and the frame it produces is a thin grey line with a smudge on the end. No rule reads
+   intent here — a pond the same size relative to Kinkaku-ji is context worth keeping,
+   and the street is not — so the handful of places where the guide disagrees with the
+   percentile say so, and everywhere else is left alone. */
+var PORR={'Senso-ji':125,'Heian Jingu':135,'Kinkaku-ji':92,'Meiji Jingu':250,
+          'Todai-ji':195,'Kiyomizu-dera':160,'Nijo Castle':250,'Byodo-in':105,
+          'Kasuga Taisha':85,'Sumiyoshi Taisha':95,'Tsurugaoka Hachimangu':110,
+          'Fujisan Hongu Sengen Taisha':95,'Hakone Shrine':100,'Enoshima':110,
+          'Nezu Shrine':80,'Pontocho Alley':34,'Nishiki Market':48,"Philosopher's Path":66,'Meguro River':95,'Omoide Yokocho':30,'Yanaka':58,'Tsukiji Outer Market':58,'Kuromon Market':58,'Gion':72,'Shibuya Crossing':175,'Dotonbori':78,'Ginkaku-ji':78};
 function portraitPts(p){
   var a=PORSITE[p.name],out=[],i;
-  if(a){for(i=a.i0;i<a.i1;i++)out.push(i);return out}
+  if(a){
+    /* Crop to what stands up, when a site is mostly flat ground. The frame below is
+       set from percentiles of the points it is given, so a site whose points are 95%
+       moat gets a frame 95% moat wide: Osaka Castle came out a four-pixel keep in nine
+       hundred metres of water. Kept at 1.5x the built radius so the moat still shows at
+       the edges — the crop is to stop the water setting the scale, not to deny it.
+       Only when the halo really dominates, so Sanjusangen-do, which is one 120m hall
+       and nothing else, is untouched. */
+    var lim=PORR[p.name];
+    if(lim||(a.rb&&a.rb<a.r*.55)){
+      var axp=Math.cos(p.lat*D2R)*111320;
+      lim=lim||a.rb*1.5;
+      var l2=lim*lim;
+      for(i=a.i0;i<a.i1;i++){
+        var ep=(PX[i]-p.lng)*axp, np2=(myInv(PY[i])-p.lat)*110574;
+        if(ep*ep+np2*np2<=l2)out.push(i);
+      }
+      if(out.length>=60)return out;
+      out.length=0;
+    }
+    for(i=a.i0;i<a.i1;i++)out.push(i);return out;
+  }
   /* No authored form: draw what the map does know around it — its lanes, its river
      bank, a neighbour's precinct. Honest, and it says something true about where a
      place sits even when it says nothing about the building.
@@ -3559,8 +4095,21 @@ function portrait(p,cw,ch){
      ground, not from one end of the ground to the other — bounding it by the ground
      alone frames a temple fine and sends a 333m tower straight off the top. */
   var u0=q(su,.07),u1=q(su,.93),vTop=q(sv,.01),vBot=q(sg,.96);
+  /* A surroundings portrait is centred on the place, not on the ink. Recentring on the
+     content is right for an authored site — the drawing is the subject — but for a
+     place with no form of its own the subject is the spot itself, and two tea shops
+     fifty metres apart in Uji were being handed the identical picture because the
+     frame slid onto the same neighbouring temple both times. */
+  if(!PORSITE[p.name]){var hsp=Math.max(Math.abs(u0),Math.abs(u1));u0=-hsp;u1=hsp}
   var sc=Math.min(cw*.86/Math.max(12,u1-u0), ch*.84/Math.max(8,vBot-vTop));
-  var ox2=cw/2-(u0+u1)/2*sc, oy2=ch*.93-vBot*sc;
+  var ox2=PORSITE[p.name]?cw/2-(u0+u1)/2*sc:cw/2;
+  /* Sit tall things on the floor of the frame and centre flat ones. Anchoring the
+     bottom is right for a pagoda — it wants ground under it and sky over it — and
+     wrong for a 500m alley, which is nine parts empty paper with a hairline of ink
+     ruled along the very bottom edge. Pontocho, Nishiki, Dotonbori and the
+     Philosopher's Path were all drawn that way. */
+  var vsp=(vBot-vTop)*sc;
+  var oy2=vsp<ch*.62?ch*.5-(vTop+vBot)*.5*sc:ch*.93-vBot*sc;
   var c=document.createElement('canvas');c.width=cw*2;c.height=ch*2;
   var g=c.getContext('2d');if(!g){POR[key]='';return ''}
   g.scale(2,2);
