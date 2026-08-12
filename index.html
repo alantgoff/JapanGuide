@@ -183,9 +183,22 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #detail .por{width:100%;height:auto;display:block}
 /* Stepping through a city is the way the drawings are meant to be met, so the control
    sits with the actions rather than hidden behind a shortcut. */
-#detail .tour{display:flex;align-items:center;justify-content:space-between;gap:8px}
-#detail .tour button{min-width:34px;padding:6px 0;font-size:15px;line-height:1}
-#detail .tour span{font-size:10.5px;color:var(--ink-faint);letter-spacing:.04em}
+/* The pager is how you flip through the guide, so it is a control, not a caption: two
+   arrow buttons big enough to hit without aiming, with the count between them, and the
+   arrow keys do the same, which is why the buttons carry the hint. It is a sticky
+   footer on the card so it stays put at the bottom while the body scrolls — the one
+   control you never have to hunt for. */
+#detail .tour{position:sticky;bottom:0;z-index:2;display:flex;align-items:stretch;gap:6px;
+  background:var(--panel);border-top:1px solid var(--line);padding:11px 22px 13px}
+#detail .tour .pgr{flex:1;min-height:42px;font-size:23px;line-height:1;color:var(--ink-dim);
+  border:1px solid var(--line);border-radius:2px;background:transparent;cursor:pointer;
+  transition:background .12s,color .12s,border-color .12s}
+#detail .tour .pgr:hover{color:var(--ink);background:rgba(34,31,27,.05);border-color:var(--line-strong)}
+#detail .tour .pgr:active{background:rgba(34,31,27,.09)}
+#detail .tour .pgrn{flex:1.5;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:var(--f-mono);font-size:13px;color:var(--ink);letter-spacing:.02em}
+#detail .tour .pgrn em{font-style:normal;font-size:9px;color:var(--ink-faint);letter-spacing:.09em;
+  text-transform:uppercase;margin-top:3px}
 #detail h2{margin:0;font-family:var(--f-disp);font-size:24px;line-height:1.14;letter-spacing:.01em;
   font-weight:400;text-wrap:balance;padding-right:26px}
 #detail h2.mine{color:var(--shu)}
@@ -4093,8 +4106,17 @@ stage.addEventListener('wheel',function(e){
 },{passive:false});
 /* How much of the window a place takes when you ask for it by name. */
 var DBL_FILL=.88;
-stage.addEventListener('dblclick',function(e){
+/* On the document rather than the canvas, because the floating card is a sibling of the
+   map and can sit right over the mark you are aiming at — and then a dblclick on the
+   canvas never fires, and double-clicking a place to zoom into it silently does nothing.
+   The hit test is in screen coordinates and does not care what DOM element is on top, so
+   this finds the place under the cursor whether the card covers it or not. A card's own
+   buttons and links still handle their own double-clicks. */
+document.addEventListener('dblclick',function(e){
+  var t=e.target;
+  if(t.closest&&t.closest('button,a,input,textarea,select,label'))return;
   var r=stageRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+  if(px<0||py<0||px>W||py>H)return;
   /* On a place — its mark or its name — go straight to it rather than stepping the
      zoom by a factor and landing wherever that happens to be. Double-clicking a
      thing is asking for that thing, so it is centred and filled to the window. */
@@ -4107,14 +4129,22 @@ stage.addEventListener('dblclick',function(e){
     flyTo(fit([c[2]-d*1.3,c[3]-d,c[2]+d*1.3,c[3]+d],.05),620);
     return;
   }
-  var ns=Math.max(MINS,Math.min(MAXS,V.s*2.2));
-  flyTo({cx:xOfS(px),cy:yOfS(py),s:ns},420);
+  /* the bare-map step zoom only when the double-click is on the map itself, so
+     double-clicking an empty patch of a panel does not lurch the camera */
+  if(!(t.closest&&t.closest('.panel,#pform'))){
+    var ns=Math.max(MINS,Math.min(MAXS,V.s*2.2));
+    flyTo({cx:xOfS(px),cy:yOfS(py),s:ns},420);
+  }
 });
 window.addEventListener('keydown',function(e){
   if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
   var pan=60/V.s,k=e.key;
-  if(k==='ArrowLeft'){V.cx-=pan;invalidate()}
-  else if(k==='ArrowRight'){V.cx+=pan;invalidate()}
+  /* When a card is open the left/right arrows step through it — places within a place
+     card, cities within a city card — which is the key nobody has to be told about and
+     the fast way to flip through the guide. With nothing open they pan, as before. */
+  var carded=sel!==null||selCity!==null;
+  if(k==='ArrowLeft'){if(carded){(selCity!==null?cityGo:tourGo)(-1)}else{V.cx-=pan;invalidate()}}
+  else if(k==='ArrowRight'){if(carded){(selCity!==null?cityGo:tourGo)(1)}else{V.cx+=pan;invalidate()}}
   else if(k==='ArrowUp'){V.cy+=pan;invalidate()}
   else if(k==='ArrowDown'){V.cy-=pan;invalidate()}
   else if(k==='='||k==='+'){zoomAt(W/2,H/2,1.9)}
@@ -4191,15 +4221,29 @@ function tourGo(dir){
   var i=dir>0?0:L.length-1;
   if(sel){for(var k=0;k<L.length;k++)if(L[k].id===sel){i=k+dir;break}}
   i=(i%L.length+L.length)%L.length;
-  select(L[i].id,true);
+  /* A shorter flight than a click's, because cycling is browsing: you are flipping
+     through the guide to look at the drawings, not travelling to one place, and a
+     700ms fly on every press makes a stack of them feel like wading. */
+  select(L[i].id,true,undefined,sel?400:700);
 }
 
-function select(id,fly,fill){
+/* Stepping between cities the same way the tour steps between places, so ‹ › and the
+   arrow keys keep working when it is a city card that is open rather than a place. */
+function cityGo(dir){
+  if(!CITY_LABELS.length)return;
+  var i=selCity===null?(dir>0?0:CITY_LABELS.length-1):(selCity+dir);
+  i=(i%CITY_LABELS.length+CITY_LABELS.length)%CITY_LABELS.length;
+  citySelect(i);
+  var c=CITY_LABELS[i],d=CITY_R/111.32;
+  flyTo(fit([c[2]-d*1.3,c[3]-d,c[2]+d*1.3,c[3]+d],.05),400);
+}
+
+function select(id,fly,fill,dur){
   var p=byId[id];if(!p)return;
   sel=id;selCity=null;needOver=true;
   if(fopen)closeForm();
   /* Land where the drawing reads, not merely where the mark is. */
-  if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p,fill)},700);
+  if(fly)flyTo({cx:p.x,cy:p.y,s:revealScale(p,fill)},dur||700);
   /* The chip moves first: the panel's tour counter reads off the region's walk, and
      rendering before the move counted this place against the one you came from. */
   setRegionChip(p.region);
@@ -4266,7 +4310,11 @@ function renderCity(i){
         return '<button class="nearrow'+(n.q.mine?' mine':'')+'" data-go="'+esc(n.q.id)+'">'+
           '<span>'+esc(n.q.name)+'</span><span class="d">'+
           (n.d<1?Math.round(n.d*1000)+' m':(n.d<10?n.d.toFixed(1):Math.round(n.d))+' km')+'</span></button>';
-      }).join('')+'</div>':'');
+      }).join('')+'</div>':'')+
+    (CITY_LABELS.length>1?'<div class="tour">'+
+      '<button id="cprev" class="pgr" type="button" aria-label="Previous city" title="Previous city (← or [)">‹</button>'+
+      '<span class="pgrn">'+(i+1)+' / '+CITY_LABELS.length+'<em>City</em></span>'+
+      '<button id="cnext" class="pgr" type="button" aria-label="Next city" title="Next city (→ or ])">›</button></div>':'');
   el.innerHTML=h;el.classList.add('open');
   el.querySelector('#close').onclick=closeDetail;
   el.querySelector('#cityfit').onclick=function(){
@@ -4275,6 +4323,9 @@ function renderCity(i){
   };
   var wk=el.querySelector('#citywalk');
   if(wk)wk.onclick=function(){select(shown[0].q.id,true)};
+  var cp=el.querySelector('#cprev'),cn=el.querySelector('#cnext');
+  if(cp)cp.onclick=function(){cityGo(-1)};
+  if(cn)cn.onclick=function(){cityGo(1)};
   Array.prototype.forEach.call(el.querySelectorAll('[data-go]'),function(b){
     b.onclick=function(){select(b.dataset.go,true)};
   });
@@ -4501,15 +4552,6 @@ function renderDetail(p){
       '<a class="wide" href="'+esc(imageSearch(p))+'" target="_blank" rel="noopener noreferrer"'+
         ' title="Photographs of '+esc(p.name)+' on Google Images — opens in a new tab">Photos</a>'+
     '</div>'+
-    (function(){
-      var L=tourList(),n=-1;
-      for(var k=0;k<L.length;k++)if(L[k].id===p.id){n=k;break}
-      if(L.length<2)return '';
-      return '<div class="tour">'+
-        '<button id="tprev" class="ghost" aria-label="Previous place">‹</button>'+
-        '<span class="mono">'+(n+1)+' / '+L.length+' · '+esc(regionName(p.region))+'</span>'+
-        '<button id="tnext" class="ghost" aria-label="Next place">›</button></div>';
-    })()+
     (p.mine?'<div class="acts"><button id="editbtn" class="ghost">Edit</button>'+
             '<button id="movebtn" class="ghost">Move</button></div>':'')+
     '</div>'+
@@ -4518,7 +4560,19 @@ function renderDetail(p){
         return '<button class="nearrow'+(n.q.mine?' mine':'')+'" data-id="'+n.q.id+'"><span>'+esc(n.q.name)+'</span>'+
                '<span class="d">'+(n.d<1?(n.d*1000).toFixed(0)+' m':n.d.toFixed(n.d<10?1:0)+' km')+'</span></button>';
       }).join('')+
-    '</div>';
+    '</div>'+
+    /* The pager is a sticky footer, not a line buried in the body: it is how you flip
+       through the guide, so it stays pinned to the bottom of the card and you never
+       have to scroll to find it. */
+    (function(){
+      var L=tourList(),n=-1;
+      for(var k=0;k<L.length;k++)if(L[k].id===p.id){n=k;break}
+      if(L.length<2)return '';
+      return '<div class="tour">'+
+        '<button id="tprev" class="pgr" type="button" aria-label="Previous place" title="Previous place (← or [)">‹</button>'+
+        '<span class="pgrn">'+(n+1)+' / '+L.length+'<em>'+esc(regionName(p.region))+'</em></span>'+
+        '<button id="tnext" class="pgr" type="button" aria-label="Next place" title="Next place (→ or ])">›</button></div>';
+    })();
   el.innerHTML=h;el.classList.add('open');
   el.querySelector('#close').onclick=closeDetail;
   el.querySelector('#addbtn').onclick=function(){toggleTrip(p.id);renderDetail(p)};
