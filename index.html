@@ -2577,6 +2577,24 @@ var ARCH=[
     })();
     /* Kurama-dera up on the ridge to the east */
     precinct(lng,lat,[[130,60,20,15,0,1.1,{h:11,roof:17,bays:2,eave:2.8,podium:1.4,engawa:1.6}]],7,Z[1]);
+  }, null],
+
+  /* Nezu Museum: a long low hall of Kengo Kuma's under a deep sweeping roof, wrapped
+     round a garden of ponds and stone Buddhas that is the real reason to go. A modern
+     building, but an authored one — glass and a bamboo colonnade, not a machiya. */
+  ['Nezu Museum', function(lng,lat,Z){
+    var ax=aspect(lat);
+    blob(lng,lat,120,26,7,Z[0],{conc:1.1});
+    /* the long entrance hall, low and deep, its roof oversailing far past the glass */
+    hall(lng,lat,14,44,84,7,Z[1],{h:7,roof:9.5,bays:2.6,eave:4.5,sori:.5,podium:.6,solid:.05});
+    /* the bamboo walk along the approach */
+    (function(){var rr=84*D2R,cs=Math.cos(rr),sn=Math.sin(rr),zg=Math.max(Z[1],zLift(6));
+      for(var i=0;i<14;i++){var u=-30+i*3.4,v=-16;
+        var bx=lng+mLat(u*cs-v*sn)*ax,by=lat+mLat(u*sn+v*cs);
+        for(var q=1;q<=4;q++)push(bx,by,7,zg,6*q/4)}})();
+    /* the garden pond behind, with its islands */
+    pond(lng-mLat(30)*ax,lat+mLat(34),44,7,Z[1],{ea:1.3,eb:.85,rot:20,lobes:4,amp:.2,rip:28,
+      isles:[[-8,4,6,12,3],[16,-6,4,8,2.4]]});
   }, null]
 ];
 for(var ai=0;ai<ARCH.length;ai++)(function(a){
@@ -4318,7 +4336,7 @@ var PORR={'Senso-ji':125,'Heian Jingu':135,'Kinkaku-ji':92,'Meiji Jingu':250,
           'Todai-ji':195,'Kiyomizu-dera':160,'Nijo Castle':250,'Byodo-in':105,
           'Kasuga Taisha':130,'Fushimi Inari Taisha':140,'Sumiyoshi Taisha':95,'Tsurugaoka Hachimangu':110,
           'Fujisan Hongu Sengen Taisha':95,'Hakone Shrine':100,'Enoshima':110,
-          'Nezu Shrine':80,'Fuji Subaru Line 5th Station':95,'Owakudani':300,'Ryoan-ji':46,'Hakone Shrine':235,'Tenryu-ji':82,'Tofuku-ji':140,'Shiraito Falls':90,'Kurama & Kibune':170,'Meiji Jingu':210,'Pontocho Alley':34,'Nishiki Market':48,"Philosopher's Path":66,'Meguro River':95,'Omoide Yokocho':30,'Yanaka':58,'Tsukiji Outer Market':58,'Kuromon Market':58,'Gion':72,'Shibuya Crossing':175,'Dotonbori':78,'Ginkaku-ji':78};
+          'Nezu Shrine':80,'Fuji Subaru Line 5th Station':95,'Owakudani':300,'Ryoan-ji':46,'Hakone Shrine':235,'Tenryu-ji':82,'Tofuku-ji':140,'Shiraito Falls':90,'Nezu Museum':58,'Kurama & Kibune':170,'Meiji Jingu':210,'Pontocho Alley':34,'Nishiki Market':48,"Philosopher's Path":66,'Meguro River':95,'Omoide Yokocho':30,'Yanaka':58,'Tsukiji Outer Market':58,'Kuromon Market':58,'Gion':72,'Shibuya Crossing':175,'Dotonbori':78,'Ginkaku-ji':78};
 function portraitPts(p){
   var a=PORSITE[p.name],out=[],i;
   if(a){
