@@ -2679,6 +2679,63 @@ function landFast(lng,lat){
   return false;
 }
 
+/* ---- a coarse "definitely sea" mask ----
+   The ground lattice throws away an ocean candidate the expensive way: it takes the
+   Mercator inverse of the point and runs the coastline point-in-polygon to prove the
+   point is wet. On a coastal view half the candidates are open water and every one of
+   them pays that toll before being rejected. myInv is the single most expensive function
+   in the frame and crosses is close behind, and this is where most of both go.
+
+   So mark, once at load, which cells of a coarse grid could possibly hold land, and let
+   a candidate in a cell that provably cannot skip out on one array read. The mask is
+   deliberately generous — a cell is land-possible if its centre is on land, if any
+   coastline edge passes through it, or if it merely neighbours such a cell — so it never
+   throws away a candidate the exact test would have kept. landFast still decides every
+   point that survives, so the drawing is byte-for-byte what it was; only the water that
+   was going to be discarded anyway is discarded sooner. Indexed straight off Mercator-y,
+   the same units the lattice already has, so it needs no inverse to read. */
+var SEA_CELL=0.07, SEA_X0, SEA_Y0, SEA_YS, SEA_NX, SEA_NY, SEAMASK;
+(function(){
+  var minLng=1e9,maxLng=-1e9,minLat=1e9,maxLat=-1e9,i;
+  for(i=0;i<IBOX.length;i++){var b=IBOX[i];
+    if(b[0]<minLng)minLng=b[0];if(b[2]>maxLng)maxLng=b[2];
+    if(b[1]<minLat)minLat=b[1];if(b[3]>maxLat)maxLat=b[3];}
+  minLng-=SEA_CELL*2;maxLng+=SEA_CELL*2;minLat-=SEA_CELL*2;maxLat+=SEA_CELL*2;
+  SEA_X0=minLng; SEA_Y0=my(minLat);
+  SEA_NX=Math.ceil((maxLng-minLng)/SEA_CELL);
+  SEA_NY=Math.ceil((my(maxLat)-SEA_Y0)/SEA_CELL);
+  SEA_YS=(my(maxLat)-SEA_Y0)/SEA_NY;
+  var raw=new Uint8Array(SEA_NX*SEA_NY),ix,iy;
+  for(iy=0;iy<SEA_NY;iy++){
+    var lat=myInv(SEA_Y0+(iy+.5)*SEA_YS);
+    for(ix=0;ix<SEA_NX;ix++)if(landFast(SEA_X0+(ix+.5)*SEA_CELL,lat))raw[iy*SEA_NX+ix]=1;
+  }
+  function mark(lng,lat){
+    var jx=Math.floor((lng-SEA_X0)/SEA_CELL),jy=Math.floor((my(lat)-SEA_Y0)/SEA_YS);
+    if(jx>=0&&jx<SEA_NX&&jy>=0&&jy<SEA_NY)raw[jy*SEA_NX+jx]=1;
+  }
+  for(i=0;i<ISLANDS.length;i++){var poly=ISLANDS[i];
+    for(var j=0,pj=poly.length-1;j<poly.length;pj=j++){
+      var a=poly[pj],c=poly[j],st=Math.max(1,Math.ceil(Math.hypot(c[0]-a[0],c[1]-a[1])/(SEA_CELL*.5)));
+      for(var t=0;t<=st;t++)mark(a[0]+(c[0]-a[0])*t/st,a[1]+(c[1]-a[1])*t/st);
+    }
+  }
+  SEAMASK=new Uint8Array(SEA_NX*SEA_NY);           /* dilate by one cell */
+  for(iy=0;iy<SEA_NY;iy++)for(ix=0;ix<SEA_NX;ix++){
+    var on=0;
+    for(var dy=-1;dy<=1&&!on;dy++)for(var dx=-1;dx<=1;dx++){
+      var nx=ix+dx,ny=iy+dy;
+      if(nx>=0&&nx<SEA_NX&&ny>=0&&ny<SEA_NY&&raw[ny*SEA_NX+nx]){on=1;break}
+    }
+    SEAMASK[iy*SEA_NX+ix]=on;
+  }
+})();
+function seaSkip(lng,ly){                          /* true = provably open water */
+  var ix=(lng-SEA_X0)/SEA_CELL; if(ix<0||ix>=SEA_NX)return true;
+  var iy=(ly-SEA_Y0)/SEA_YS;    if(iy<0||iy>=SEA_NY)return true;
+  return !SEAMASK[(iy|0)*SEA_NX+(ix|0)];
+}
+
 /* ---- the cloud is finished; freeze it ----
    push() needs growable arrays, but nothing writes after this point and the cull
    reads all five of them for every candidate point, every frame. Float64 throughout
@@ -3466,6 +3523,8 @@ function renderBase(){
            the fill used to be faded out entirely by then. */
         var qgx=Math.round(gx/stepD),qgy=Math.round(gy/stepD);
         var lx=gx+(h2(qgx,qgy)-.5)*jit, ly=gy+(h2(qgy+1,qgx+1)-.5)*jit;
+        /* throw out open water before the inverse and the point-in-polygon, not after */
+        if(!allLand&&seaSkip(lx,ly))continue;
         var la=myInv(ly);
         if(!allLand&&!landFast(lx,la))continue;
         /* Snap onto the street lattice. Kyoto really is a grid, so this is accurate
