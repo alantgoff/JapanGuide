@@ -158,11 +158,19 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
    at the same visual weight as ＋ and −. */
 #nav .tourbtn{font-size:19px}
 #nav #nnext{border-bottom:1px solid var(--line-strong)}
+/* The play button leads the whole stack — it is the way in to the hands-free tour, so it
+   wears the accent to say 'start here'. While the tour runs it fills solid and shows the
+   stop square. */
+#nav #nplay{color:var(--shu);font-size:12px}
+#nav #nplay:hover{color:var(--shu);background:rgba(179,58,42,.10)}
+#nav.touring #nplay{background:var(--shu);color:var(--panel)}
+#nav.touring #nplay:hover{background:var(--shu);color:var(--panel);filter:brightness(1.08)}
 
 /* ---- detail ---- */
-/* Stops above the nav stack rather than running the full height of the window:
-   #nav is five 38px buttons at bottom:20, so the bottom 210px of this column
-   belongs to it. The panel scrolls internally, so nothing is lost. */
+/* Kept clear of the nav stack rather than running the full height of the window:
+   #nav is six 38px buttons at bottom:20, so the bottom stretch of the right column
+   belongs to it. The auto-placement steers the card out of that column, and the card
+   scrolls internally, so nothing is lost. */
 /* The card floats next to whatever you opened rather than parking on the right edge.
    Positioned by transform from left:0/top:0, because this is set every frame while
    the map moves and transform is the only property that costs nothing to change.
@@ -481,6 +489,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 </div>
 
 <div class="panel" id="nav">
+  <button id="nplay" type="button" title="Walk me through these places (space)" aria-label="Play a guided tour of these places">▶</button>
   <button id="nprev" class="tourbtn" type="button" title="Previous place (&#91;)" aria-label="Previous place">‹</button>
   <button id="nnext" class="tourbtn" type="button" title="Next place (&#93;)" aria-label="Next place">›</button>
   <button id="zin" title="Zoom in" aria-label="Zoom in">＋</button>
@@ -4120,6 +4129,7 @@ function stageRect(){return SR||(SR=stage.getBoundingClientRect())}
 window.addEventListener('scroll',function(){SR=null},true);
 var pts=new Map(),drag=null,pinch=null,moved=0;
 stage.addEventListener('pointerdown',function(e){
+  tourStop();                       /* touching the map ends the hands-free tour */
   stage.setPointerCapture(e.pointerId);
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   killHint();
@@ -4212,7 +4222,7 @@ function flushWheel(){
   }
 }
 stage.addEventListener('wheel',function(e){
-  e.preventDefault();killHint();anim=null;
+  e.preventDefault();killHint();anim=null;tourStop();   /* zooming by hand ends the tour */
   var r=stageRect();
   wheelX=e.clientX-r.left;wheelY=e.clientY-r.top;
   if(!e.ctrlKey&&looksLikeTrackpad(e)){wheelPanX+=e.deltaX;wheelPanY+=e.deltaY}
@@ -4253,6 +4263,10 @@ document.addEventListener('dblclick',function(e){
 });
 window.addEventListener('keydown',function(e){
   if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
+  /* Space is play/pause for the tour, the way it is for anything that plays. Any other
+     key while it runs means you want to steer yourself, so it stops first. */
+  if(e.key===' '||e.key==='Spacebar'){e.preventDefault();tourPlay();return}
+  if(autoTour.on)tourStop();
   var pan=60/V.s,k=e.key;
   /* When a card is open the left/right arrows step through it — places within a place
      card, cities within a city card — which is the key nobody has to be told about and
@@ -4330,6 +4344,7 @@ function tourList(){
   return (TOURC[key]=tourOrder(pool));
 }
 function tourGo(dir){
+  tourStop();                       /* stepping by hand takes the wheel from the auto-tour */
   var L=tourList();if(!L.length)return;
   /* From a cold map ‹ picks up the end of the walk and › the start of it, so either
      button is a way in rather than both landing on the same place. */
@@ -4340,6 +4355,43 @@ function tourGo(dir){
      through the guide to look at the drawings, not travelling to one place, and a
      700ms fly on every press makes a stack of them feel like wading. */
   select(L[i].id,true,undefined,sel?400:700);
+}
+
+/* ---- the guided tour: the map walks you through the places by itself ----
+   The flyover. It flies to each place in the region's walking order, holds long enough
+   to read the card and take in the drawing, then moves on, looping until it is stopped.
+   The card that lands with each place is the narration, and its pager doubles as the
+   progress read-out. Any touch of the map, any key, or the button again hands control
+   straight back — the tour is a thing you start, never a thing you are trapped in. */
+var autoTour={on:false,timer:0,i:0,fly:1000,dwell:2200};
+function setPlayBtn(){
+  var el=document.getElementById('nplay');if(!el)return;
+  el.textContent=autoTour.on?'■':'▶';
+  var t=autoTour.on?'Stop the tour (space)':'Walk me through these places (space)';
+  el.title=t;el.setAttribute('aria-label',t);
+  document.getElementById('nav').classList.toggle('touring',autoTour.on);
+}
+function tourStop(){
+  if(!autoTour.on&&!autoTour.timer)return;          /* cheap: this is called on every gesture */
+  autoTour.on=false;
+  if(autoTour.timer){clearTimeout(autoTour.timer);autoTour.timer=0}
+  setPlayBtn();
+}
+function tourShow(){
+  if(!autoTour.on)return;
+  var L=tourList();if(L.length<2){tourStop();return}
+  autoTour.i=(autoTour.i%L.length+L.length)%L.length;
+  select(L[autoTour.i].id,true,undefined,autoTour.fly);
+  autoTour.timer=setTimeout(function(){autoTour.i++;tourShow()},autoTour.fly+autoTour.dwell);
+}
+function tourPlay(){
+  if(autoTour.on){tourStop();return}
+  var L=tourList();if(L.length<2)return;            /* nothing to walk through */
+  var start=0;                                      /* pick up from the open place, if any */
+  if(sel)for(var k=0;k<L.length;k++)if(L[k].id===sel){start=k;break}
+  autoTour.on=true;autoTour.i=start;
+  killHint();setPlayBtn();
+  tourShow();
 }
 
 /* Stepping between cities the same way the tour steps between places, so ‹ › and the
@@ -4365,7 +4417,7 @@ function select(id,fly,fill,dur){
   renderDetail(p);
   positionPanel();
 }
-function closeDetail(){sel=null;selCity=null;needOver=true;panelDrag=null;
+function closeDetail(){tourStop();sel=null;selCity=null;needOver=true;panelDrag=null;
   var d=document.getElementById('detail');d.classList.remove('open','dragging')}
 
 /* ---- the city card ----
@@ -4984,6 +5036,7 @@ function setRegionChip(id){
     b.setAttribute('aria-pressed',rg.id==='route'?'true':'false');
     b.innerHTML=esc(rg.name)+'<small class="ja">'+esc(rg.ja)+'</small>';
     b.onclick=function(){
+      tourStop();                 /* a new region is a new walk; end the running one */
       setRegionChip(rg.id);
       flyTo(fit(rg.box,regionPad(rg.id)),760);
       /* Take the open card to the new city with you. Leaving a Tokyo place on screen
@@ -5103,6 +5156,7 @@ document.addEventListener('pointerdown',function(e){
 },true);
 
 /* ---- nav buttons ---- */
+document.getElementById('nplay').onclick=function(){killHint();tourPlay()};
 document.getElementById('nprev').onclick=function(){tourGo(-1);killHint()};
 document.getElementById('nnext').onclick=function(){tourGo(1);killHint()};
 document.getElementById('zin').onclick=function(){zoomAt(W/2,H/2,2.1);killHint()};
