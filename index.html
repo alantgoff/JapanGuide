@@ -4358,12 +4358,24 @@ function tourGo(dir){
 }
 
 /* ---- the guided tour: the map walks you through the places by itself ----
-   The flyover. It flies to each place in the region's walking order, holds long enough
-   to read the card and take in the drawing, then moves on, looping until it is stopped.
-   The card that lands with each place is the narration, and its pager doubles as the
-   progress read-out. Any touch of the map, any key, or the button again hands control
-   straight back — the tour is a thing you start, never a thing you are trapped in. */
-var autoTour={on:false,timer:0,i:0,fly:1000,dwell:2200};
+   The flyover. It flies to each place in a walking order, holds long enough to read the
+   card and take in the drawing, then moves on, looping until it is stopped. The card
+   that lands with each place is the narration, and its pager doubles as the progress
+   read-out. Any touch of the map, any key, or the button again hands control straight
+   back — the tour is a thing you start, never a thing you are trapped in.
+
+   What it walks is a *source* — a function returning the ordered place ids — so the same
+   player drives two walks: the whole region from the play button, and a single city from
+   its card. Both read the source fresh each step, so both only ever visit the kinds of
+   place currently switched on: turn the food chips off and the walk drops the food. */
+var autoTour={on:false,timer:0,i:0,src:null,fly:1000,dwell:2200};
+function regionIds(){return tourList().map(function(p){return p.id})}
+function cityTourList(i){                            /* a single city's places, filtered, in walking order */
+  var c=CITY_LABELS[i];if(!c)return [];
+  var o={lat:c[3],lng:c[2]};
+  var pool=P.filter(function(q){return filters[q.cat]!==false&&haversine(o,q)<=CITY_R});
+  return tourOrder(pool).map(function(p){return p.id});
+}
 function setPlayBtn(){
   var el=document.getElementById('nplay');if(!el)return;
   el.textContent=autoTour.on?'■':'▶';
@@ -4373,23 +4385,27 @@ function setPlayBtn(){
 }
 function tourStop(){
   if(!autoTour.on&&!autoTour.timer)return;          /* cheap: this is called on every gesture */
-  autoTour.on=false;
+  autoTour.on=false;autoTour.src=null;
   if(autoTour.timer){clearTimeout(autoTour.timer);autoTour.timer=0}
   setPlayBtn();
 }
 function tourShow(){
   if(!autoTour.on)return;
-  var L=tourList();if(L.length<2){tourStop();return}
+  var L=autoTour.src?autoTour.src():[];
+  if(!L.length){tourStop();return}
   autoTour.i=(autoTour.i%L.length+L.length)%L.length;
-  select(L[autoTour.i].id,true,undefined,autoTour.fly);
+  select(L[autoTour.i],true,undefined,autoTour.fly);
+  if(L.length<2)return;                             /* a city with one place: land and stay */
   autoTour.timer=setTimeout(function(){autoTour.i++;tourShow()},autoTour.fly+autoTour.dwell);
 }
-function tourPlay(){
+function tourPlay(src,startId){
   if(autoTour.on){tourStop();return}
-  var L=tourList();if(L.length<2)return;            /* nothing to walk through */
-  var start=0;                                      /* pick up from the open place, if any */
-  if(sel)for(var k=0;k<L.length;k++)if(L[k].id===sel){start=k;break}
-  autoTour.on=true;autoTour.i=start;
+  src=(typeof src==='function')?src:regionIds;      /* an event object from onclick means 'the region' */
+  var L=src();if(!L||!L.length)return;              /* nothing switched on to walk through */
+  if(L.length<2){select(L[0],true,undefined,700);return}   /* one place is not a walk — just go there */
+  var start=0,s=startId||sel;                        /* pick up from the open place, if it's on the walk */
+  if(s)for(var k=0;k<L.length;k++)if(L[k]===s){start=k;break}
+  autoTour.on=true;autoTour.src=src;autoTour.i=start;
   killHint();setPlayBtn();
   tourShow();
 }
@@ -4467,7 +4483,7 @@ function renderCity(i){
     '<p class="mono" style="margin:0;color:var(--ink-faint)">'+c[3].toFixed(4)+'° N · '+c[2].toFixed(4)+'° E</p>'+
     '<div class="acts">'+
       '<button id="cityfit">Frame it</button>'+
-      (shown.length?'<button id="citywalk" class="ghost">Walk it</button>':'')+
+      (within.length?'<button id="citywalk" class="ghost">▶ Walk it</button>':'')+
       '<a class="wide" href="'+esc('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(c[1]+' '+c[0]))+'"'+
         ' target="_blank" rel="noopener noreferrer"'+
         ' title="Photographs of '+esc(c[0])+' on Google Images — opens in a new tab">Photos</a>'+
@@ -4490,7 +4506,9 @@ function renderCity(i){
     flyTo(fit([c[2]-d*1.3,c[3]-d,c[2]+d*1.3,c[3]+d],.05),700);
   };
   var wk=el.querySelector('#citywalk');
-  if(wk)wk.onclick=function(){select(shown[0].q.id,true)};
+  /* Walk it now walks: the hands-free tour, but scoped to this one city and only the
+     kinds of place currently switched on. */
+  if(wk)wk.onclick=function(){tourPlay(function(){return cityTourList(i)})};
   var cp=el.querySelector('#cprev'),cn=el.querySelector('#cnext');
   if(cp)cp.onclick=function(){cityGo(-1)};
   if(cn)cn.onclick=function(){cityGo(1)};
