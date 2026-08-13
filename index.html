@@ -3760,7 +3760,10 @@ function renderOver(){
     var showJa=tier<=2&&s>60;
     var pos=placeLabel(rects,x,y,tw,fs+(showJa?13:2));
     if(!pos)continue;
-    inkLabel(tx,pos[0],pos[1],sp,tier===1?.96:tier===2?.84:.68,COL.ink);
+    /* City names go red for the same reason the place names do — over a dense city's
+       stipple, black type was the hardest thing on the map to read. The ring marker
+       stays ink; only the type takes the accent. */
+    inkLabel(tx,pos[0],pos[1],sp,tier===1?.96:tier===2?.84:.68,COL.shu);
     /* the name counts as the city, the same way a place's name counts as the place */
     CITYBOX[i]=[Math.min(x-sr-3,pos[0]-3),Math.min(y-sr-3,pos[1]-fs*.78-2),
                 Math.max((sr+3)*2,tw+6+(pos[0]-x)),fs+(showJa?13:0)+8];
@@ -3849,8 +3852,11 @@ function renderOver(){
         if(!isS&&!isT)continue;
         pos2=[o.x+11,o.y+.5];rects.push([pos2[0],pos2[1]-fs2/2,tw2,fs2+2]);
       }
-      inkLabel(txt,pos2[0],pos2[1],1.1,isS||isT?1:hover===pl.id?.95:.84,
-               isS||pl.mine?COL.shu:COL.ink);
+      /* Vermilion, not ink. A black name printed over the black stipple of a city was
+         the one place the labels lost their fight with the cloud; the accent red lifts
+         clear of it, and the paper halo underneath carries the rest. Whose mark it is
+         is still told by the marker's colour, so the label need not also carry it. */
+      inkLabel(txt,pos2[0],pos2[1],1.1,isS||isT?1:hover===pl.id?.95:.84,COL.shu);
       var lh=fs2;
       if(wantJa&&pl.ja){
         setFont('400 10px "Hiragino Mincho ProN","Yu Mincho",serif');
