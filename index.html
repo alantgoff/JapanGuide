@@ -3918,30 +3918,16 @@ function panelAnchor(){
   if(sel&&byId[sel]){var p=byId[sel];return [sxOf(p.x),syOf(p.y)]}
   return null;
 }
-function positionPanel(){
-  var el=document.getElementById('detail');
-  if(!el.classList.contains('open'))return;
-  if(W<=1000){el.style.transform='';return}    /* narrow screens keep the bottom sheet */
-  var pw=el.offsetWidth,ph=el.offsetHeight;
-  /* Once dragged, the card holds the spot you left it in — only clamped back into the
-     window so a later zoom or resize can't strand it off an edge — instead of the
-     auto-placement pulling it back to its marker every frame. */
-  if(panelDrag){
-    el.style.transform='translate3d('+
-      Math.round(Math.max(PANEL_M,Math.min(W-pw-PANEL_M,panelDrag[0])))+'px,'+
-      Math.round(Math.max(PANEL_M,Math.min(H-ph-PANEL_M,panelDrag[1])))+'px,0)';
-    return;
-  }
-  var a=panelAnchor();if(!a)return;
+/* The best spot for a card of pw×ph beside an anchor at (ax,ay): right and left first,
+   each at three heights, then below and above. More places to try means more chances to
+   find one that clears the other panels outright rather than settling for the least bad. */
+function dodgePos(ax,ay,pw,ph){
   var rs=chromeRects();
-  /* Right and left first, each at three heights, then below and above. More places to
-     try means more chances to find one that clears the other panels outright rather
-     than settling for the least bad. */
-  var cand=[[a[0]+PANEL_GAP,    a[1]-ph*.32],[a[0]-PANEL_GAP-pw, a[1]-ph*.32],
-            [a[0]+PANEL_GAP,    a[1]-ph+40 ],[a[0]-PANEL_GAP-pw, a[1]-ph+40 ],
-            [a[0]+PANEL_GAP,    a[1]-40    ],[a[0]-PANEL_GAP-pw, a[1]-40    ],
-            [a[0]-pw/2,         a[1]+PANEL_GAP],[a[0]-pw/2,      a[1]-PANEL_GAP-ph]];
-  var best=null,bestCost=Infinity;
+  var cand=[[ax+PANEL_GAP,    ay-ph*.32],[ax-PANEL_GAP-pw, ay-ph*.32],
+            [ax+PANEL_GAP,    ay-ph+40 ],[ax-PANEL_GAP-pw, ay-ph+40 ],
+            [ax+PANEL_GAP,    ay-40    ],[ax-PANEL_GAP-pw, ay-40    ],
+            [ax-pw/2,         ay+PANEL_GAP],[ax-pw/2,      ay-PANEL_GAP-ph]];
+  var best=[PANEL_M,PANEL_M],bestCost=Infinity;
   for(var i=0;i<cand.length;i++){
     var x=cand[i][0],y=cand[i][1];
     var cx=Math.max(PANEL_M,Math.min(W-pw-PANEL_M,x));
@@ -3950,10 +3936,34 @@ function positionPanel(){
        toward the earlier candidates so 'to the right of it' wins all else equal */
     var cost=Math.abs(cx-x)+Math.abs(cy-y)+i*4;
     for(var k=0;k<rs.length;k++)cost+=overlap(cx,cy,pw,ph,rs[k])/35;
-    /* never sit on top of the thing you opened */
-    cost+=overlap(cx,cy,pw,ph,[a[0]-26,a[1]-26,a[0]+26,a[1]+26])*4;
+    cost+=overlap(cx,cy,pw,ph,[ax-26,ay-26,ax+26,ay+26])*4;   /* never sit on the thing you opened */
     if(cost<bestCost){bestCost=cost;best=[cx,cy]}
   }
+  return best;
+}
+function positionPanel(){
+  var el=document.getElementById('detail');
+  if(!el.classList.contains('open'))return;
+  if(W<=1000){el.style.transform='';return}    /* narrow screens keep the bottom sheet */
+  var pw=el.offsetWidth,ph=el.offsetHeight;
+  /* A dragged card holds the spot you left it in. A running tour docks the card to one
+     steady position — worked out once, for a centred place, since every stop flies to
+     the middle — so it reads as a caption instead of skating across the screen behind
+     every flight. Neither is pulled back to the marker; only a free card floats beside
+     it. Everything is clamped to the window so a zoom or resize can't strand it. */
+  var pin=panelDrag;
+  if(!pin&&autoTour.on){
+    if(!autoTour.dock)autoTour.dock=dodgePos(W/2,H/2,pw,ph);
+    pin=autoTour.dock;
+  }
+  if(pin){
+    el.style.transform='translate3d('+
+      Math.round(Math.max(PANEL_M,Math.min(W-pw-PANEL_M,pin[0])))+'px,'+
+      Math.round(Math.max(PANEL_M,Math.min(H-ph-PANEL_M,pin[1])))+'px,0)';
+    return;
+  }
+  var a=panelAnchor();if(!a)return;
+  var best=dodgePos(a[0],a[1],pw,ph);
   el.style.transform='translate3d('+Math.round(best[0])+'px,'+Math.round(best[1])+'px,0)';
 }
 
@@ -4368,7 +4378,7 @@ function tourGo(dir){
    player drives two walks: the whole region from the play button, and a single city from
    its card. Both read the source fresh each step, so both only ever visit the kinds of
    place currently switched on: turn the food chips off and the walk drops the food. */
-var autoTour={on:false,timer:0,i:0,src:null,fly:1000,dwell:2200};
+var autoTour={on:false,timer:0,i:0,src:null,dock:null,fly:1000,dwell:2200};
 function regionIds(){return tourList().map(function(p){return p.id})}
 function cityTourList(i){                            /* a single city's places, filtered, in walking order */
   var c=CITY_LABELS[i];if(!c)return [];
@@ -4385,7 +4395,7 @@ function setPlayBtn(){
 }
 function tourStop(){
   if(!autoTour.on&&!autoTour.timer)return;          /* cheap: this is called on every gesture */
-  autoTour.on=false;autoTour.src=null;
+  autoTour.on=false;autoTour.src=null;autoTour.dock=null;
   if(autoTour.timer){clearTimeout(autoTour.timer);autoTour.timer=0}
   setPlayBtn();
 }
@@ -4394,9 +4404,17 @@ function tourShow(){
   var L=autoTour.src?autoTour.src():[];
   if(!L.length){tourStop();return}
   autoTour.i=(autoTour.i%L.length+L.length)%L.length;
-  select(L[autoTour.i],true,undefined,autoTour.fly);
+  var id=L[autoTour.i], from=(sel&&byId[sel])||null, to=byId[id];
+  /* Pace the flight by how far it goes: a hop to the next block is quick, a jump across
+     the city a longer, smoother travel, so the flyover reads as a journey rather than a
+     reel of cuts. The first stop, with nothing to measure from, takes the default. */
+  var fly=autoTour.fly;
+  if(from&&to&&from!==to)fly=Math.round(Math.max(700,Math.min(1600,600+haversine(from,to)*75)));
+  select(id,true,undefined,fly);
   if(L.length<2)return;                             /* a city with one place: land and stay */
-  autoTour.timer=setTimeout(function(){autoTour.i++;tourShow()},autoTour.fly+autoTour.dwell);
+  /* Under reduced motion the camera jumps rather than flies, so don't idle out a flight
+     that never happened — just hold each place for the reading beat. */
+  autoTour.timer=setTimeout(function(){autoTour.i++;tourShow()},(reduce?0:fly)+autoTour.dwell);
 }
 function tourPlay(src,startId){
   if(autoTour.on){tourStop();return}
