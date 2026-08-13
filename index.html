@@ -175,7 +175,12 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #detail{left:0;top:0;width:322px;max-height:min(calc(100vh - 28px),596px);overflow-y:auto;padding:0;display:none;
   opacity:0;transition:opacity .22s;will-change:transform}
 #detail.open{display:block;opacity:1}
-#detail .hd{padding:20px 22px 17px;border-bottom:1px solid var(--line);position:relative}
+/* The header doubles as the drag handle — grab it to move the card out of the way. */
+#detail .hd{padding:20px 22px 17px;border-bottom:1px solid var(--line);position:relative;
+  cursor:grab;user-select:none;-webkit-user-select:none}
+#detail.dragging{transition:none}
+#detail.dragging .hd{cursor:grabbing}
+#detail .hd #close{cursor:pointer}
 #detail .cat{display:flex;align-items:center;gap:7px;margin-bottom:11px}
 #detail .cat svg{width:11px;height:11px;overflow:visible}
 /* The portrait is ink on the paper, not a picture pasted over it — no border, no
@@ -3879,6 +3884,8 @@ function renderOver(){
    The chrome boxes are cached: this runs on every frame the map moves, and reading
    six getBoundingClientRects per frame is a layout flush per frame. */
 var CHROME=null,PANEL_GAP=20,PANEL_M=14;
+/* Where the card has been dragged to, or null while it floats by its marker. */
+var panelDrag=null;
 function chromeRects(){
   if(CHROME)return CHROME;
   CHROME=[];
@@ -3906,8 +3913,18 @@ function positionPanel(){
   var el=document.getElementById('detail');
   if(!el.classList.contains('open'))return;
   if(W<=1000){el.style.transform='';return}    /* narrow screens keep the bottom sheet */
+  var pw=el.offsetWidth,ph=el.offsetHeight;
+  /* Once dragged, the card holds the spot you left it in — only clamped back into the
+     window so a later zoom or resize can't strand it off an edge — instead of the
+     auto-placement pulling it back to its marker every frame. */
+  if(panelDrag){
+    el.style.transform='translate3d('+
+      Math.round(Math.max(PANEL_M,Math.min(W-pw-PANEL_M,panelDrag[0])))+'px,'+
+      Math.round(Math.max(PANEL_M,Math.min(H-ph-PANEL_M,panelDrag[1])))+'px,0)';
+    return;
+  }
   var a=panelAnchor();if(!a)return;
-  var pw=el.offsetWidth,ph=el.offsetHeight,rs=chromeRects();
+  var rs=chromeRects();
   /* Right and left first, each at three heights, then below and above. More places to
      try means more chances to find one that clears the other panels outright rather
      than settling for the least bad. */
@@ -3930,6 +3947,39 @@ function positionPanel(){
   }
   el.style.transform='translate3d('+Math.round(best[0])+'px,'+Math.round(best[1])+'px,0)';
 }
+
+/* ---- the card can be dragged out of the way ----
+   The auto-placement is good but not clairvoyant: the one spot it dodges to can still
+   be over the thing you were trying to see. So grab the header and move the card
+   anywhere; from then until you close it, it stays where you dropped it rather than
+   snapping back to its marker. Only the header is the handle — the body keeps its
+   buttons, its links and its scroll. */
+(function(){
+  var el=document.getElementById('detail'),drag=null;
+  el.addEventListener('pointerdown',function(e){
+    if(W<=1000)return;                                /* the mobile bottom sheet doesn't drag */
+    if(!e.target.closest||!e.target.closest('.hd'))return;      /* header only */
+    if(e.target.closest('button,a,input,select,textarea'))return;   /* let controls do their job */
+    var r=el.getBoundingClientRect();
+    drag={px:e.clientX,py:e.clientY,ox:r.left,oy:r.top};
+    panelDrag=[r.left,r.top];
+    el.classList.add('dragging');
+    try{el.setPointerCapture(e.pointerId)}catch(_){}
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove',function(e){
+    if(!drag)return;
+    panelDrag=[drag.ox+(e.clientX-drag.px),drag.oy+(e.clientY-drag.py)];
+    positionPanel();
+  });
+  function end(e){
+    if(!drag)return;
+    drag=null;el.classList.remove('dragging');
+    try{el.releasePointerCapture(e.pointerId)}catch(_){}
+  }
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+})();
 
 /* The selected marker's pulse, on its own layer and clearing only the rectangle it
    drew last time. The ring itself was never the cost — the cost was that drawing it
@@ -4315,7 +4365,8 @@ function select(id,fly,fill,dur){
   renderDetail(p);
   positionPanel();
 }
-function closeDetail(){sel=null;selCity=null;needOver=true;document.getElementById('detail').classList.remove('open')}
+function closeDetail(){sel=null;selCity=null;needOver=true;panelDrag=null;
+  var d=document.getElementById('detail');d.classList.remove('open','dragging')}
 
 /* ---- the city card ----
    Cities carry a name, a Japanese name and a coordinate, and nothing else — there is
