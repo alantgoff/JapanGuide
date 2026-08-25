@@ -5873,7 +5873,16 @@ document.getElementById('pastebtn').onclick=pasteSheet;
         u_contrast:.30,u_roughness:.50,
         u_fiber:.62,u_fiberSize:.42,
         u_crumples:.30,u_crumpleSize:.55,
-        u_folds:.12,u_foldCount:3,
+        /* Folds off, and no fold to compute. The shader's fold creases are sized in
+           pattern space, and the pattern here is driven by a 1x1 empty image with
+           fit:none — so patternUV spans only about +/-2.5 across the whole window and
+           foldsUV (patternUV * .12) spans a third of a unit. At that frequency the
+           three creases are not creases: one of them lands as a single circular dent
+           the size of a prefecture, sitting in the middle of the map with the paper
+           grain smoothed out inside it. Every other term is sized off higher-frequency
+           UV and reads correctly, so this is the one to drop rather than rescaling the
+           pattern — which pulls the fibre with it and tears the texture into a cross. */
+        u_folds:0,u_foldCount:0,
         u_fade:.42,u_drops:.30,u_seed:17,
         u_fit:ps.ShaderFitOptions.none,u_scale:1,u_rotation:0,
         u_offsetX:0,u_offsetY:0,u_originX:.5,u_originY:.5,
