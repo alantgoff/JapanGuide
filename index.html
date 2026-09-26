@@ -622,7 +622,7 @@ var PLACES = [
 ["Ginkaku-ji","銀閣寺","temple","kyoto",35.0270,135.7982,2,"The Silver Pavilion, never silvered — moss, raked sand, a mountain path.","¥500. Start here and walk the Philosopher's Path south."],
 ["Philosopher's Path","哲学の道","nature","kyoto",35.0261,135.7947,2,"Two kilometres of canal and cherry trees, named for a professor's commute.","Free. Links Ginkaku-ji to Nanzen-ji in about 40 minutes."],
 ["Ryoan-ji","龍安寺","temple","kyoto",35.0345,135.7183,2,"Fifteen rocks in gravel; from no angle can you see all fifteen.","¥600. Ten minutes' walk from Kinkaku-ji — do them back to back."],
-["Nijo Castle","二条城","culture","kyoto",35.0142,135.7481,2,"Shogun's palace with nightingale floors that squeal to betray intruders.","¥1,300. Closed Tuesdays in winter months. The painted screens are originals."],
+["Nijo Castle","二条城","culture","kyoto",35.0142,135.7481,2,"Shogun's palace with nightingale floors that squeal to betray intruders.","¥1,300. Closed Tuesdays in January, July, August and December. The painted screens are originals."],
 ["Gion","祇園","view","kyoto",35.0037,135.7752,1,"Wooden machiya teahouses on stone lanes; geiko crossing between them at dusk.","Free to walk. Photography is banned on Hanamikoji's private lanes — obey the signs."],
 ["Pontocho Alley","先斗町","food","kyoto",35.0064,135.7706,2,"A lantern-lit lane one arm's width across, running five blocks between Shijo and Sanjo.","Kamo-side restaurants put decks out over the river from May to September. Cash-only is common, and some houses still decline visitors without an introduction."],
 ["Nishiki Market","錦市場","food","kyoto",35.0050,135.7648,2,"Four hundred years and five blocks of pickles, tofu, knives and skewers.","09:00–18:00. Eat at the stall, not while walking — it's the local rule."],
@@ -709,6 +709,179 @@ var PLACES = [
 ["Harukoma Sushi","春駒","eat","osaka",34.7053,135.5117,3,"Fat cuts of fish for the price of a chain, in a covered shopping street.","Tenjinbashisuji 5-chome. Cash, no bookings, and a queue that moves fast."],
 ["Tsuruhashi Korean Town","鶴橋コリアタウン","eat","osaka",34.6652,135.5313,3,"The smell of grilling meat starts at the ticket barrier and does not stop.","Around Tsuruhashi station. Dozens of yakiniku houses; pick one with smoke and a queue."],
 ["Nakatanidou","中谷堂","eat","nara",34.6832,135.8272,3,"Mugwort mochi pounded in the street at a speed that draws a crowd.","Sanjo-dori, on the way from the station to the park. Watch for the pounding, then eat it warm."]
+];
+
+/* ===== typical hours, for the planner =====
+   Keyed by name, like KW and the drawings, so PLACES keeps its row order — built-in ids
+   are row positions and saved trips point at them.
+
+   These are TYPICAL hours: the usual season's opening, not a timetable. Temples shift
+   by half an hour between summer and winter, restaurants take odd days off, and
+   national holidays move closures around. The planner says so wherever it uses them.
+   A closure is only written down where it is well established; a wrong "closed" warns
+   you off a place that is open, which is worse than saying nothing.
+
+   [windows, closed, minutes, flags, season, seasonNote]
+     windows  "09:00-17:00", several "11:30-14:00 17:30-22:00", or "24h". A window that
+              ends before it starts runs past midnight.
+     closed   weekday digits, 0 = Sunday: "1" Mondays, "03" Sundays and Wednesdays.
+              "?" after a digit means only some of those days. "@1,7,8,12" limits the
+              closures to those months.
+     minutes  a sensible time to spend there, before pace is applied
+     flags    b book ahead · e go early, it fills up · n best after dark ·
+              w can close for weather or conditions · S closed outside its season
+     season   months, "7-9" or wrapping "11-2": the months it is in season
+     seasonNote  what to say when the date is out of season */
+var HOURS={
+"Senso-ji":["24h","",60,"e"],
+"Meiji Jingu":["06:00-17:00","",60,""],
+"Shibuya Crossing":["24h","",30,""],
+"Shinjuku Gyoen":["09:00-16:30","1",90,""],
+"Tokyo Skytree":["10:00-22:00","",60,"b"],
+"Tokyo Tower":["09:00-23:00","",30,""],
+"teamLab Planets":["09:00-22:00","",90,"b"],
+"Tsukiji Outer Market":["05:00-14:00","03",60,"e"],
+"Toyosu Market":["05:00-17:00","03?",60,"e"],
+"Imperial Palace East Gardens":["09:00-16:30","15",60,""],
+"Ueno Park":["05:00-23:00","",60,""],
+"Tokyo National Museum":["09:30-17:00","1",120,""],
+"Nezu Shrine":["06:00-17:00","",30,""],
+"Yanaka":["24h","",90,"n"],
+"Omoide Yokocho":["17:00-00:00","",75,"n"],
+"Akihabara":["10:00-20:00","",120,""],
+"Meguro River":["24h","",60,"n","3-4","Cherry season is late March to early April"],
+"Shimokitazawa":["11:00-20:00","",120,""],
+"Yoyogi Park":["24h","",45,""],
+"Zojo-ji":["06:00-17:30","",30,""],
+"Nezu Museum":["10:00-17:00","1",90,"b"],
+"Rikugien":["09:00-17:00","",60,""],
+"Odaiba":["10:00-21:00","",120,""],
+"Kotoku-in Great Buddha":["08:00-17:00","",45,""],
+"Tsurugaoka Hachimangu":["06:00-21:00","",45,""],
+"Nikko Tosho-gu":["09:00-16:30","",120,"e"],
+"Enoshima":["09:00-20:00","",180,""],
+"Fushimi Inari Taisha":["24h","",120,"e"],
+"Kinkaku-ji":["09:00-17:00","",45,"e"],
+"Kiyomizu-dera":["06:00-18:00","",60,"e"],
+"Arashiyama Bamboo Grove":["24h","",45,"e"],
+"Ginkaku-ji":["08:30-17:00","",45,""],
+"Philosopher's Path":["24h","",60,""],
+"Ryoan-ji":["08:00-17:00","",40,""],
+"Nijo Castle":["08:45-17:00","2@1,7,8,12",90,""],
+"Gion":["24h","",60,"n"],
+"Pontocho Alley":["17:00-23:00","",90,"n"],
+"Nishiki Market":["09:00-18:00","",60,""],
+"Tenryu-ji":["08:30-17:00","",45,""],
+"Sanjusangen-do":["08:30-17:00","",40,""],
+"Tofuku-ji":["09:00-16:00","",60,""],
+"Kurama & Kibune":["09:00-16:15","",240,""],
+"Byodo-in":["08:30-17:30","",60,""],
+"Kodai-ji":["09:00-17:30","",45,""],
+"Heian Jingu":["06:00-18:00","",45,""],
+"Daitoku-ji":["09:00-16:30","",75,""],
+"Osaka Castle":["09:00-17:00","",90,""],
+"Dotonbori":["11:00-23:00","",90,"n"],
+"Tsutenkaku & Shinsekai":["10:00-20:00","",75,""],
+"Umeda Sky Building":["09:30-22:30","",60,"n"],
+"Sumiyoshi Taisha":["06:30-17:00","",45,""],
+"Shitenno-ji":["08:30-16:30","",45,""],
+"Kuromon Market":["09:00-17:00","",60,""],
+"Osaka Aquarium Kaiyukan":["10:00-20:00","",150,"b"],
+"Nakazakicho":["11:00-19:00","",90,""],
+"Todai-ji":["07:30-17:30","",75,""],
+"Nara Park":["24h","",60,""],
+"Kasuga Taisha":["06:30-17:30","",60,""],
+"Kofuku-ji":["09:00-17:00","",45,""],
+"Horyu-ji":["08:00-17:00","",90,""],
+"Naramachi":["10:00-17:00","",60,""],
+"Yoshino-yama":["08:30-16:30","",240,"","4","The cherries are out in early to mid April"],
+"Chureito Pagoda":["24h","",60,"e","11-2","Fuji is clearest November to February"],
+"Lake Kawaguchi":["24h","",120,""],
+"Mount Fuji summit":["24h","",480,"bS","7-9","The climbing season is early July to early September"],
+"Fuji Subaru Line 5th Station":["09:00-17:00","",90,"","4-11","Winter snow often closes the road — check first"],
+"Oshino Hakkai":["09:00-17:00","",60,"e"],
+"Hakone Shrine":["24h","",45,""],
+"Owakudani":["09:00-16:30","",60,"w"],
+"Lake Ashi":["09:30-17:00","",90,""],
+"Fuji-Q Highland":["09:00-17:00","2?",300,""],
+"Shiraito Falls":["24h","",45,""],
+"Hakone Open-Air Museum":["09:00-17:00","",120,""],
+"Fujisan Hongu Sengen Taisha":["06:00-19:00","",40,""],
+"Tsuen Tea":["09:30-17:30","",40,""],
+"Nakamura Tokichi Honten":["10:00-17:00","",60,""],
+"Itohkyuemon Byodo-in":["10:00-17:30","",45,""],
+"Mitsuboshien Kanbayashi Sannyu":["09:00-17:30","",40,""],
+"Fukujuen Uji Tea Workshop":["10:00-17:00","",60,"b"],
+"Ippodo Tea & Kaboku Tearoom":["10:00-17:00","",45,""],
+"Marukyu Koyamaen Nishinotoin":["10:00-17:00","",45,""],
+"Gion Tsujiri":["10:00-20:00","",40,""],
+"Kagizen Yoshifusa":["09:30-18:00","1",40,""],
+"Fukujuen Kyoto Flagship":["11:00-19:00","",45,""],
+"Nakamura Tokichi Kyoto Station":["11:00-21:00","",40,""],
+"Suzukien Asakusa":["11:00-17:00","",20,""],
+"Sakurai Japanese Tea Experience":["11:00-23:00","",75,"b"],
+"Ippodo Tea Tokyo Marunouchi":["11:00-19:00","",40,""],
+"HIGASHIYA GINZA":["11:00-19:00","",60,""],
+"Sukiyabashi Jiro":["11:30-14:00 17:30-20:30","0",45,"b"],
+"Kyubey Ginza":["11:30-14:00 17:00-22:00","0",75,"b"],
+"Sushi Saito":["12:00-14:00 18:00-23:00","0",90,"b"],
+"Narisawa":["12:00-15:00 18:30-23:00","0",150,"b"],
+"Den":["18:00-23:00","0",150,"b"],
+"Asakusa Imahan":["11:30-21:30","",90,""],
+"Tonkatsu Maisen Aoyama":["11:00-22:00","",60,""],
+"Butagumi":["11:30-15:00 18:00-23:00","1",75,"b"],
+"Sushi Dai Toyosu":["05:30-14:00","03?",180,"e"],
+"Kikunoi Honten":["12:00-14:00 17:00-20:00","",150,"b"],
+"Hyotei":["08:00-11:00 12:00-14:00 17:00-19:30","",90,"b"],
+"Honke Owariya":["11:00-15:30","",60,"e"],
+"Izuju":["10:30-19:00","",45,""],
+"Menbaka Fire Ramen":["11:30-15:00 17:00-21:00","",45,""],
+"Kani Doraku Dotonbori":["11:00-23:00","",60,""],
+"Mizuno":["11:00-22:00","",60,""],
+"Harukoma Sushi":["11:00-21:30","",45,""],
+"Tsuruhashi Korean Town":["11:00-22:00","",75,""],
+"Nakatanidou":["10:00-19:00","",15,""]
+};
+/* A place of your own has no hours; it gets a sensible stay for its kind. */
+var CATDUR={temple:60,nature:75,view:45,culture:90,food:60,matcha:45,eat:75};
+
+/* ===== getting between places =====
+   Each hub is a station a traveller would actually use, [lng,lat], with how the ground
+   around it is crossed: [minutes before you're moving, minutes per km, what you ride].
+   A place belongs to the nearest hub within 30 km. Kyoto's buses are slower than Tokyo's
+   metro and Hakone's loop of train, cable car and ropeway is slower than either, so each
+   hub carries its own figures. */
+var AREAS={
+  tokyo:      {name:'Tokyo',      at:[139.7671,35.6812],local:[12,2.2,'metro']},
+  kamakura:   {name:'Kamakura',   at:[139.5503,35.3190],local:[10,2.5,'Enoden or bus']},
+  nikko:      {name:'Nikko',      at:[139.6208,36.7461],local:[10,3.0,'bus']},
+  hakone:     {name:'Hakone',     at:[139.1063,35.2326],local:[15,4.0,'Hakone loop']},
+  kawaguchiko:{name:'Kawaguchiko',at:[138.7688,35.4983],local:[12,3.5,'bus']},
+  fujinomiya: {name:'Fujinomiya', at:[138.6166,35.2225],local:[12,3.0,'bus']},
+  kyoto:      {name:'Kyoto',      at:[135.7588,34.9858],local:[12,3.0,'bus or subway']},
+  uji:        {name:'Uji',        at:[135.8004,34.8898],local:[8,2.5,'bus']},
+  kurama:     {name:'Kurama',     at:[135.7703,35.1170],local:[8,3.0,'bus']},
+  nara:       {name:'Nara',       at:[135.8277,34.6844],local:[10,2.8,'bus']},
+  horyuji:    {name:'Horyu-ji',   at:[135.7376,34.6025],local:[8,3.0,'bus']},
+  yoshino:    {name:'Yoshino',    at:[135.8563,34.3736],local:[10,3.0,'ropeway or bus']},
+  osaka:      {name:'Osaka',      at:[135.4959,34.7025],local:[10,2.3,'metro']}
+};
+/* The place a hub-by-distance gets wrong: the summit is climbed from the north side. */
+var AREA_FIX={"Mount Fuji summit":"kawaguchiko"};
+/* Station to station, in minutes, with the ride. Journeys with no line here are routed
+   through the others. */
+var RAIL_EDGES=[
+  ['tokyo','kyoto',135,'Shinkansen'],['tokyo','osaka',160,'Shinkansen'],
+  ['kyoto','osaka',30,'JR Special Rapid'],['kyoto','nara',45,'Kintetsu'],['osaka','nara',45,'Kintetsu'],
+  ['kyoto','uji',25,'JR Nara line'],['uji','nara',35,'JR Nara line'],['kyoto','kurama',45,'Eizan line'],
+  ['nara','horyuji',15,'JR Yamatoji'],['osaka','horyuji',35,'JR Yamatoji'],
+  ['nara','yoshino',80,'Kintetsu'],['osaka','yoshino',90,'Kintetsu'],
+  ['tokyo','kamakura',60,'JR Yokosuka line'],['tokyo','nikko',120,'Tobu limited express'],
+  ['tokyo','hakone',85,'Odakyu Romancecar'],['kamakura','hakone',90,'JR Tokaido line'],
+  ['kyoto','hakone',145,'Shinkansen'],['osaka','hakone',150,'Shinkansen'],
+  ['tokyo','kawaguchiko',120,'Fuji Excursion'],['hakone','kawaguchiko',120,'bus'],
+  ['kawaguchiko','fujinomiya',80,'bus'],['tokyo','fujinomiya',120,'Shinkansen and bus'],
+  ['kyoto','fujinomiya',150,'Shinkansen and bus']
 ];
 </script>
 <script>
@@ -3317,12 +3490,15 @@ function rebuildPlaces(){
   function add(o){o.x=mx(o.lng);o.y=my(o.lat);P.push(o);byId[o.id]=o}
   for(var i=0;i<PLACES.length;i++){var r=PLACES[i];
     add({id:'b'+i,name:r[0],ja:r[1],cat:r[2],region:r[3],lat:r[4],lng:r[5],rank:r[6],
-         why:r[7],note:r[8],day:!!r[9],kw:(KW[r[0]]||'')});}
+         why:r[7],note:r[8],day:!!r[9],kw:(KW[r[0]]||''),
+         hrs:parseHours(HOURS[r[0]]),area:areaOf(r[5],r[4],r[0])});}
   for(var u=0;u<USER.length;u++){var q=USER[u];
     add({id:q.id,name:q.name,ja:q.ja||'',cat:CATS[q.cat]?q.cat:'eat',
          region:q.region||nearestRegion(q.lng,q.lat),lat:q.lat,lng:q.lng,rank:1,
          why:q.note||'',note:'',day:false,mine:true,src:q,
-         kw:((q.name||'')+' '+(q.ja||'')+' '+(q.note||'')).toLowerCase()});}
+         kw:((q.name||'')+' '+(q.ja||'')+' '+(q.note||'')).toLowerCase(),
+         /* your own place never borrows a curated place's hours, even under its name */
+         hrs:null,area:areaOf(q.lng,q.lat)});}
   if(typeof search!=='undefined'&&search)search.placeholder='Search '+P.length+' places…';
 }
 
@@ -4820,6 +4996,42 @@ function saveTrip(){
   if(shared)return saveMine();          /* which only says why it isn't saving */
   try{localStorage.setItem('japan-survey-trip',JSON.stringify(trip))}catch(e){}
   saveMine();
+}
+
+/* ---- hours and travel areas ----
+   HOURS and AREAS are authored as compact text next to PLACES; this reads them into
+   something the scheduler can use. Minutes past midnight throughout. */
+function hm(t){var m=/^(\d\d):(\d\d)$/.exec(t||'');return m?+m[1]*60+(+m[2]):null}
+/* "7-9", "11-2" (wraps round the year), "1,7,8,12", "4" -> {7:1,8:1,9:1} */
+function monthSet(spec){
+  var out={},parts=String(spec||'').split(','),i,m,a,b,k,g;
+  for(i=0;i<parts.length;i++){
+    m=/^(\d{1,2})(?:-(\d{1,2}))?$/.exec(parts[i].trim());if(!m)continue;
+    a=+m[1];b=m[2]?+m[2]:a;
+    for(k=a,g=0;g<12;g++){out[k]=1;if(k===b)break;k=k%12+1}
+  }
+  return out;
+}
+function parseHours(r){
+  if(!r)return null;
+  var w=[],ws=String(r[0]).split(/\s+/),i,m,a,b;
+  for(i=0;i<ws.length;i++){
+    if(ws[i]==='24h'){w.push([0,1440]);continue}
+    m=/^(\d\d:\d\d)-(\d\d:\d\d)$/.exec(ws[i]);if(!m)continue;
+    a=hm(m[1]);b=hm(m[2]);if(b<=a)b+=1440;       /* runs past midnight */
+    w.push([a,b]);
+  }
+  var cl=String(r[1]||''),at=cl.indexOf('@'),days=at>=0?cl.slice(0,at):cl,closed=[0,0,0,0,0,0,0];
+  for(i=0;i<days.length;i++)if(days[i]>='0'&&days[i]<='6')closed[+days[i]]=days[i+1]==='?'?2:1;
+  return {w:w,closed:closed,cmonths:at>=0?monthSet(cl.slice(at+1)):null,dur:(r[2]|0)||60,
+          f:String(r[3]||''),season:r[4]?monthSet(r[4]):null,snote:r[5]||''};
+}
+/* The hub a place is reached from: the nearest within 30 km, else 'elsewhere'. */
+function areaOf(lng,lat,name){
+  if(name&&AREA_FIX[name])return AREA_FIX[name];
+  var best='elsewhere',bd=30,k,d;
+  for(k in AREAS){d=haversine({lng:lng,lat:lat},{lng:AREAS[k].at[0],lat:AREAS[k].at[1]});if(d<bd){bd=d;best=k}}
+  return best;
 }
 
 /* The schedule laid over the trip. All of it is optional — a trip with no plan behaves
