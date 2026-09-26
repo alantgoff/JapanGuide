@@ -31,4 +31,18 @@ suite('filecheck', async t => {
   t.section('2. nothing is fetched');
   t.ok(errs.length === 0, 'no script errors', errs.slice(0, 3));
   t.ok(stray.length === 0, 'no request left the page', stray.slice(0, 5));
+
+  t.section('3. the exports are made here too');
+  // a saved trip with a date, then the planner through its buttons, as someone would
+  await page.evaluate(() => localStorage.setItem('japan-guide-v1', JSON.stringify({ v: 1, places: [], trip: ['b0', 'b3', 'b14', 'b27'], days: [3],
+    plan: { start: '2026-10-05', dayStart: '09:00', pace: 'standard', dayStarts: {}, stops: {} } })));
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(600);
+  await page.click('#tripplan');
+  await page.click('#pcopy');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#pics')]);
+  const ics = require('fs').readFileSync(await dl.path(), 'utf8');
+  t.ok(/^BEGIN:VCALENDAR\r\n/.test(ics) && (ics.match(/BEGIN:VEVENT/g) || []).length === 5, 'the planner opens and the calendar downloads from a file', dl.suggestedFilename());
+  await page.waitForTimeout(300);
+  t.ok(errs.length === 0 && stray.length === 0, 'still no errors and no requests', { errs: errs.slice(0, 3), stray: stray.slice(0, 5) });
 });

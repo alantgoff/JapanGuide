@@ -445,6 +445,7 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   padding:6px 2px}
 .plink:hover{color:var(--shu)}
 #tripplan{color:var(--shu)}
+#sheet .ptext{white-space:pre;word-break:normal;overflow:auto;max-height:220px;margin-top:22px}
 /* a long plan scrolls under its buttons rather than taking them with it */
 #sheet .sft.pft{position:sticky;bottom:0;background:var(--panel-solid);z-index:1}
 
@@ -6190,6 +6191,23 @@ function openSheet(html,onMount){
   if(c)c.onclick=closeSheet;
   if(onMount)onMount(sheetEl);
 }
+/* Copy text, or if the clipboard is refused, show it in `box` selected so a keystroke
+   copies it. The button says which happened. */
+var COPYKEY=/Mac|iP(hone|ad|od)/.test(navigator.platform||'')?'⌘C':'Ctrl+C';
+function copyOut(btn,txt,box){
+  var label=btn.dataset.label||(btn.dataset.label=btn.textContent);
+  function ok(){btn.textContent='Copied';setTimeout(function(){btn.textContent=label},1800)}
+  function selectIt(){
+    if(box.hidden){box.textContent=txt;box.hidden=false}
+    var r=document.createRange();r.selectNodeContents(box);
+    var sl=window.getSelection();sl.removeAllRanges();sl.addRange(r);
+    try{box.scrollIntoView({block:'nearest'})}catch(e){}
+    btn.textContent='Selected — press '+COPYKEY;
+    setTimeout(function(){btn.textContent=label},2600);
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(ok,selectIt);
+  else selectIt();
+}
 function tipsSheet(){
   var body=TIPS.length
     ? '<div class="tiplist">'+TIPS.map(function(t,i){
@@ -6400,20 +6418,7 @@ function shareSheet(){
       var sk=el.querySelector('#skeep');
       if(sk)sk.onclick=function(){keepShared();shareSheet();toast('Saved to this browser.')};
       el.querySelector('#editguide').onclick=guideSheet;
-      el.querySelector('#copylink').onclick=function(){
-        var txt=noBase?frag:link,btn=this;
-        function ok(){btn.textContent='Copied';setTimeout(function(){btn.textContent='Copy link'},1800)}
-        if(navigator.clipboard&&navigator.clipboard.writeText){
-          navigator.clipboard.writeText(txt).then(ok,selectIt);
-        }else selectIt();
-        function selectIt(){
-          var box=el.querySelector('#linkbox'),r=document.createRange();
-          r.selectNodeContents(box);
-          var sl=window.getSelection();sl.removeAllRanges();sl.addRange(r);
-          btn.textContent='Selected — press ⌘C';
-          setTimeout(function(){btn.textContent='Copy link'},2600);
-        }
-      };
+      el.querySelector('#copylink').onclick=function(){copyOut(this,noBase?frag:link,el.querySelector('#linkbox'))};
     });
 }
 function guideSheet(){
@@ -6485,10 +6490,15 @@ function plannerSheet(){
     '</div>'+
     '<p class="pnote" id="pnote"></p>'+
     '<div id="pdays"></div>'+
+    '<div class="linkbox ptext" id="ptext" hidden></div>'+
     '</div>'+
-    '<div class="sft pft"><span class="spacer"></span><button id="pdone" class="primary">Done</button></div>',
+    '<div class="sft pft"><button id="pcopy">Copy as text</button>'+
+      '<button id="pics">Calendar (.ics)</button>'+
+      '<span class="spacer"></span><button id="pdone" class="primary">Done</button></div>',
     function(el){
       el.querySelector('#pdone').onclick=closeSheet;
+      el.querySelector('#pcopy').onclick=function(){copyOut(this,planText(),el.querySelector('#ptext'))};
+      el.querySelector('#pics').onclick=function(){if(plan.start)saveICS()};
       el.querySelector('#pstart').onchange=function(){plan.start=okDate(this.value);planEdit()};
       el.querySelector('#pdstart').onchange=function(){var v=okT(this.value);if(v){plan.dayStart=v;planEdit()}};
       Array.prototype.forEach.call(el.querySelectorAll('[data-pace]'),function(b){
@@ -6530,7 +6540,9 @@ function stopSet(id){return plan.stops[id]||(plan.stops[id]={})}
 function stopTidy(id){var o=plan.stops[id];if(o&&!o.dur&&!o.at)delete plan.stops[id]}
 function drawPlanDays(){
   var box=document.getElementById('pdays');if(!box)return;
-  var dated=!!plan.start;
+  var dated=!!plan.start,ics=document.getElementById('pics'),cp=document.getElementById('pcopy');
+  if(ics){ics.disabled=!dated;ics.title=dated?'Every stop, and every train of half an hour or more':'Add the first day’s date to make a calendar'}
+  if(cp)cp.disabled=!trip.length;
   document.getElementById('pnote').textContent=(dated?'':
     'Add the first day’s date to check each day against weekly closures and seasons, and to export a calendar. ')+
     'Hours are typical — check before you go. Public holidays are not modelled.';
@@ -6601,6 +6613,95 @@ function drawPlanDays(){
   each('[data-mv]',function(b){b.onclick=function(){moveTrip(b.dataset.id,+b.dataset.mv);redrawPlan()}});
   each('[data-day]',function(b){b.onclick=function(){toggleDay(b.dataset.day);redrawPlan()}});
 }
+/* ---- the plan, out of the page ----
+   Both are built here from the schedule and handed over by the browser — the clipboard,
+   or a download from a blob. Nothing is sent anywhere. */
+function planText(){
+  var S=schedule(),dated=!!plan.start,L=[],title=GUIDE.title.replace(/\n/g,' ');
+  L.push(title+' — itinerary');
+  if(dated)L.push(dateSpan(S[0].date,S[S.length-1].date)+' '+S[S.length-1].date.y+' · '+plan.pace+' pace');
+  L.push('Hours are typical — check before you go.');
+  S.forEach(function(sd,di){
+    var rg=domRegion(sd.entries.map(function(e){return byId[e.id]}));
+    L.push('');
+    L.push('Day '+(di+1)+(dated?' · '+sd.date.label:'')+(rg?' · '+rg.name:'')+' · '+fmtT(sd.start)+'–'+fmtT(sd.end)+
+      (sd.end>DAY_END?' (a long day)':''));
+    sd.entries.forEach(function(e){
+      var p=byId[e.id],pad='             ';
+      if(e.leg)L.push(pad+'↓ '+legLabel(e.leg));
+      L.push(fmtT(e.start)+'–'+fmtT(e.depart)+'  '+p.name+(p.ja?' '+p.ja:''));
+      e.warn.forEach(function(w){L.push(pad+(w.lvl?'! ':'· ')+w.t)});
+    });
+  });
+  return L.join('\n')+'\n';
+}
+/* RFC 5545. TEXT values escape backslash, semicolon, comma and newline; lines are CRLF
+   and folded at 75 octets — octets, not characters, and never inside a character, or a
+   Japanese name arrives in the calendar as mojibake. */
+function icsEsc(v){return String(v).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n')}
+function icsFold(line){
+  var out='',n=0,lim=75;
+  for(var ch of line){
+    var c=ch.codePointAt(0),b=c<0x80?1:c<0x800?2:c<0x10000?3:4;
+    if(n+b>lim){out+='\r\n ';n=1}
+    out+=ch;n+=b;
+  }
+  return out;
+}
+/* Minutes from the start of day `di` as a local Tokyo date-time; past midnight rolls
+   into the next date. */
+function icsWhen(di,min){
+  var d=dayDate(di),t=new Date(Date.UTC(d.y,d.m-1,d.d)+Math.round(min)*60000);
+  return t.getUTCFullYear()+pad2(t.getUTCMonth()+1)+pad2(t.getUTCDate())+'T'+pad2(t.getUTCHours())+pad2(t.getUTCMinutes())+'00';
+}
+function newKey(){return (Math.random().toString(36).slice(2,10)+Date.now().toString(36)).replace(/[^a-z0-9]/g,'').slice(0,20)}
+function icsText(){
+  if(!plan.start)return '';
+  /* The key ties each event to this browser's plan and its stop, not to a date, so
+     exporting again after changing the dates updates the events instead of doubling them. */
+  if(!plan.key){plan.key=newKey();saveMine()}
+  var S=schedule(),now=new Date(),seq=Math.floor((now.getTime()-Date.UTC(2020,0,1))/60000),
+      stamp=now.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,''),title=GUIDE.title.replace(/\n/g,' '),
+      L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Japan Survey//Trip planner//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+         'X-WR-CALNAME:'+icsEsc(title),'X-WR-TIMEZONE:Asia/Tokyo',
+         'BEGIN:VTIMEZONE','TZID:Asia/Tokyo','BEGIN:STANDARD','DTSTART:19700101T000000',
+         'TZOFFSETFROM:+0900','TZOFFSETTO:+0900','TZNAME:JST','END:STANDARD','END:VTIMEZONE'];
+  function ev(uid,di,a,b,sum,desc,p){
+    L.push('BEGIN:VEVENT','UID:'+uid+'@japan-survey','DTSTAMP:'+stamp,'SEQUENCE:'+seq,
+      'DTSTART;TZID=Asia/Tokyo:'+icsWhen(di,a),'DTEND;TZID=Asia/Tokyo:'+icsWhen(di,b),'SUMMARY:'+icsEsc(sum));
+    if(p){L.push('LOCATION:'+icsEsc(p.name+(p.ja?', '+p.ja:'')),'GEO:'+(+p.lat).toFixed(5)+';'+(+p.lng).toFixed(5))}
+    if(desc)L.push('DESCRIPTION:'+icsEsc(desc));
+    L.push('END:VEVENT');
+  }
+  S.forEach(function(sd,di){
+    sd.entries.forEach(function(e){
+      var p=byId[e.id],lg=e.leg;
+      if(lg&&lg.mode==='rail'&&lg.min>=30){
+        var to=AREAS[p.area]?AREAS[p.area].name:p.name;
+        ev(plan.key+'-go-'+e.id,di,e.arrive-lg.min,e.arrive,'Train to '+to+' — '+lg.label,
+           durTxt(lg.min)+', '+lg.label+(lg.rough?' (a rough estimate)':'')+'. Check the times on the day.',null);
+      }
+      var d=[];
+      e.warn.forEach(function(w){d.push((w.lvl?'! ':'')+w.t)});
+      d.push(p.hrs?'Typical hours: '+hoursText(p.hrs)+' — check before you go.':'');
+      if(p.why)d.push(p.why);
+      if(p.note)d.push(p.note);
+      ev(plan.key+'-'+e.id,di,e.start,e.depart,p.name,d.filter(Boolean).join('\n'),p);
+    });
+  });
+  L.push('END:VCALENDAR');
+  return L.map(icsFold).join('\r\n')+'\r\n';
+}
+function saveFile(name,text,type){
+  var b=new Blob([text],{type:type}),u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=name;a.style.display='none';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u)},4000);
+}
+function fileStem(){
+  return (GUIDE.title.replace(/\n/g,' ').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'japan-trip')+
+    (plan.start?'-'+plan.start:'');
+}
+function saveICS(){saveFile(fileStem()+'.ics',icsText(),'text/calendar;charset=utf-8')}
 document.getElementById('tripplan').onclick=plannerSheet;
 document.getElementById('addplace').onclick=function(){placing?endPlacing():startPlacing(null)};
 document.getElementById('tipsbtn').onclick=tipsSheet;
