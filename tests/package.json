@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "description": "Browser tests for Japan Survey. Not needed to run the guide, which is just index.html.",
+  "scripts": { "test": "node run.js" },
+  "devDependencies": { "playwright": "^1.56.0" }
+}
