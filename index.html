@@ -221,6 +221,9 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #close:hover{color:var(--shu)}
 #detail .bd{padding:17px 22px 20px;display:flex;flex-direction:column;gap:14px}
 #detail .why{margin:0;font-size:13px;line-height:1.68}
+/* the planner's assumption about this place, stated where you read about it */
+#detail .hrs{margin:0;font-size:11px;line-height:1.6;color:var(--ink-dim)}
+#detail .hrs .eyebrow{margin-right:6px}
 #detail .note{margin:0;font-size:12px;line-height:1.62;color:var(--ink-dim);padding-left:12px;
   border-left:1px solid var(--shu)}
 .tag{display:inline-block;text-transform:uppercase;letter-spacing:.14em;font-size:8.5px;padding:3px 7px;
@@ -5039,6 +5042,8 @@ function renderDetail(p){
       (p.mine?' <span class="tag mine">Yours</span>':'')+'</div>'+
     (p.why?'<p class="why">'+esc(p.why)+'</p>':'')+
     (p.note?'<p class="note">'+esc(p.note)+'</p>':'')+
+    (p.hrs?'<p class="hrs" title="Typical — check before you go"><span class="eyebrow">Typical hours</span>'+
+      esc(hoursText(p.hrs))+' · about '+durTxt(p.hrs.dur)+' there</p>':'')+
     '<p class="mono" style="margin:0;color:var(--ink-faint)">'+p.lat.toFixed(4)+'° N · '+p.lng.toFixed(4)+'° E</p>'+
     '<div class="acts">'+
       '<button id="addbtn" class="'+(inTrip?'in':'')+'">'+(inTrip?'✓ In trip':'Add to trip')+'</button>'+

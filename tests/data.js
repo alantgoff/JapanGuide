@@ -81,4 +81,17 @@ suite('data', async t => {
     rebuildPlaces();var q=byId.utest;return {hrs:q.hrs,area:q.area}})()`);
   t.ok(u.hrs === null, 'a place of your own never borrows a curated place’s hours, even by name');
   t.ok(u.area === 'kyoto', 'but it is placed in the hub it is near', u.area);
+
+  t.section('7. the reader sees what the planner assumes');
+  const q = await t.open();
+  const card = n => q.ev(`(function(){select(P.find(x=>x.name===${JSON.stringify(n)}).id,false);var h=document.querySelector('#detail .hrs');return h?h.textContent:null})()`);
+  let c = await card('Nijo Castle');
+  t.ok(c === 'Typical hours08:45–17:00 · closed Tuesdays in Jan, Jul, Aug and Dec · about 1h 30 there', 'Nijo’s card states its hours, its closures and its months', c);
+  c = await card('Sukiyabashi Jiro');
+  t.ok(/^Typical hours11:30–14:00, 17:30–20:30 · closed Sundays/.test(c), 'a restaurant its two sittings', c);
+  c = await card('Mount Fuji summit');
+  t.ok(/open all day · The climbing season is early July to early September/.test(c), 'a seasonal place its season', c);
+  await q.ev(`USER=[{id:'uhrs',name:'My café',ja:'',cat:'matcha',note:'',lat:35.0,lng:135.77,region:'kyoto'}];rebuildPlaces();0`);
+  c = await q.ev(`(function(){select('uhrs',false);return document.querySelector('#detail .hrs')})()`);
+  t.ok(c === null, 'and a place of your own claims no hours at all');
 });
