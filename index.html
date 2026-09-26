@@ -5108,6 +5108,157 @@ function domRegion(stops){
   return best?{name:'Elsewhere',ja:'その他'}:null;
 }
 
+/* ===== the schedule =====
+   Times are minutes past midnight on the day in question. Nothing here is cached: it is
+   cheap, and moving one of your own places changes every leg that touches it. It is
+   called by the itinerary, the planner and the exports — never per frame. */
+function pad2(n){return (n<10?'0':'')+n}
+function fmtT(m){m=Math.round(m);m=((m%1440)+1440)%1440;return pad2(Math.floor(m/60))+':'+pad2(m%60)}
+function durTxt(m){m=Math.round(m);if(m<60)return m+' min';var h=Math.floor(m/60),r=m%60;return h+'h'+(r?' '+pad2(r):'')}
+var WDN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* Day di's date. Built in UTC and read back in UTC: new Date('2026-10-05') is midnight UTC,
+   which is the day before anywhere west of Greenwich, so every weekday closure would land
+   on the wrong day for half the world. */
+function dayDate(di){
+  var m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(plan.start||'');if(!m)return null;
+  var t=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+di));
+  var y=t.getUTCFullYear(),mo=t.getUTCMonth()+1,d=t.getUTCDate();
+  return {y:y,m:mo,d:d,wd:t.getUTCDay(),iso:y+'-'+pad2(mo)+'-'+pad2(d),
+          label:WDN[t.getUTCDay()].slice(0,3)+' '+d+' '+MON[mo-1]};
+}
+
+/* Rail between hubs: all pairs, once. Every line carries ten minutes on top of its ride —
+   finding the platform, the wait, the change — which also makes a route with fewer changes
+   win over one a few minutes quicker on paper. */
+var RPATH=null;
+function railPaths(){
+  if(RPATH)return RPATH;
+  var ks=Object.keys(AREAS),n=ks.length,ix={},D=[],N=[],L=[],i,j,k;
+  for(i=0;i<n;i++){ix[ks[i]]=i;D.push([]);N.push([]);L.push([]);
+    for(j=0;j<n;j++){D[i][j]=i===j?0:Infinity;N[i][j]=j;L[i][j]=''}}
+  RAIL_EDGES.forEach(function(e){var a=ix[e[0]],b=ix[e[1]],w=e[2]+10;
+    if(a===undefined||b===undefined)return;
+    if(w<D[a][b]){D[a][b]=D[b][a]=w;L[a][b]=L[b][a]=e[3]}});
+  for(k=0;k<n;k++)for(i=0;i<n;i++)for(j=0;j<n;j++)
+    if(D[i][k]+D[k][j]<D[i][j]){D[i][j]=D[i][k]+D[k][j];N[i][j]=N[i][k]}
+  return (RPATH={ks:ks,ix:ix,D:D,N:N,L:L});
+}
+function railRoute(a,b){
+  var R=railPaths(),i=R.ix[a],j=R.ix[b];
+  if(i===undefined||j===undefined||!isFinite(R.D[i][j]))return null;
+  var rides=[],via=[],cur=i,nx;
+  while(cur!==j){nx=R.N[cur][j];
+    if(rides[rides.length-1]!==R.L[cur][nx])rides.push(R.L[cur][nx]);
+    if(nx!==j)via.push(AREAS[R.ks[nx]].name);cur=nx}
+  return {min:R.D[i][j],label:rides.join(' + ')+(via.length?', via '+via.join(', '):'')};
+}
+function hubPt(k){var a=AREAS[k];return {lng:a.at[0],lat:a.at[1]}}
+/* On foot, unless it's a long way and there's a quicker ride. Half an hour is still a
+   walk — that is sightseeing — but 40 minutes from Kyoto Station to Fushimi Inari is not
+   what anyone does when the Nara line takes five. */
+var WALK_PREFER=30;
+function footOrRide(a,b,area){
+  var d=haversine(a,b),w=Math.max(1,Math.round(walkMin(a,b)));
+  if(w>WALK_PREFER&&AREAS[area]){var L=AREAS[area].local,r=Math.round(L[0]+d*L[1]);
+    if(r<w)return {min:r,mode:'local',label:L[2],km:d}}
+  return {min:w,mode:'walk',label:'walk',km:d};
+}
+/* Across town: a walk if anyone would walk it, otherwise that hub's own ride. */
+function localLeg(a,b,area){
+  var d=haversine(a,b);
+  if(d<=WALK_MAX)return footOrRide(a,b,area);
+  var L=AREAS[area]?AREAS[area].local:[15,1.6,'train or bus'];
+  return {min:Math.round(L[0]+d*L[1]),mode:'local',label:L[2],km:d};
+}
+/* Any two places: walk, ride around the hub, or out to the station, the train, and in. */
+function leg(a,b){
+  var d=haversine(a,b);
+  if(d<=WALK_MAX)return footOrRide(a,b,a.area===b.area?a.area:null);
+  if(a.area===b.area&&a.area!=='elsewhere')return localLeg(a,b,a.area);
+  var r=a.area!=='elsewhere'&&b.area!=='elsewhere'?railRoute(a.area,b.area):null;
+  if(r)return {min:localLeg(a,hubPt(a.area),a.area).min+r.min+localLeg(hubPt(b.area),b,b.area).min,
+               mode:'rail',label:r.label,km:d};
+  /* somewhere with no hub near it: a rough overland figure, and it says so */
+  return {min:Math.round(d<60?15+d*1.6:30+d*.55),mode:'rail',label:'train or bus',km:d,rough:true};
+}
+
+var PACE={relaxed:1.25,standard:1,packed:.8},DAY_END=21*60+30;
+/* How long to give a stop: yours if you set it, otherwise the suggestion scaled by pace. */
+function stayOf(p){
+  var st=plan.stops[p.id];
+  if(st&&st.dur)return st.dur;
+  var base=p.hrs?p.hrs.dur:(CATDUR[p.cat]||60);
+  return Math.max(10,Math.round(base*(PACE[plan.pace]||1)/5)*5);
+}
+/* The window a visit starting at t falls in, or the next one that day. */
+function openAt(h,t){
+  if(h.w.length===1&&h.w[0][0]===0&&h.w[0][1]===1440)return {inside:true,end:Infinity};
+  var next=null,lastEnd=null;
+  for(var i=0;i<h.w.length;i++){var w=h.w[i];
+    if(t>=w[0]&&t<w[1])return {inside:true,end:w[1],open:w[0]};
+    if(w[0]>t&&(next===null||w[0]<next))next=w[0];
+    if(lastEnd===null||w[1]>lastEnd)lastEnd=w[1];}
+  return {inside:false,next:next,lastEnd:lastEnd};
+}
+/* Per day: {di, date, start, end, entries:[{i,id,leg,arrive,start,depart,dur,warn}], warn, fits}
+   warn levels: 2 = it will not work (closed, too late), 1 = worth knowing, 0 = a tip. */
+function schedule(){
+  var days=tripDays(),out=[],prevLast=null;
+  for(var di=0;di<days.length;di++){
+    var idxs=days[di],date=dayDate(di),brk=di?dayBreaks[di-1]:0;
+    var dayStart=hm(plan.dayStarts[brk]);if(dayStart===null)dayStart=hm(plan.dayStart);if(dayStart===null)dayStart=540;
+    var t=dayStart,prev=null,entries=[],hard=0;
+    for(var k=0;k<idxs.length;k++){
+      var p=byId[trip[idxs[k]]];if(!p)continue;
+      var lg=null;
+      if(prev)lg=leg(prev,p);
+      /* a day that starts somewhere else begins by getting there */
+      else if(prevLast&&prevLast.area!==p.area&&haversine(prevLast,p)>WALK_MAX){lg=leg(prevLast,p);lg.move=true}
+      var st=plan.stops[p.id]||{},pin=hm(st.at),warn=[];
+      if(!lg&&!prev&&pin!==null)t=dayStart=pin;        /* a pinned first stop starts the day */
+      var arrive=t+(lg?lg.min:0),begin=arrive,dur=stayOf(p),h=p.hrs;
+      if(pin!==null){
+        if(arrive>pin+5)warn.push({lvl:2,t:'Late for '+fmtT(pin)+' by '+durTxt(arrive-pin)});
+        begin=Math.max(arrive,pin);
+      }
+      if(h){
+        if(date){
+          var c=h.closed[date.wd];
+          if(c&&(!h.cmonths||h.cmonths[date.m]))
+            warn.push(c===1?{lvl:2,t:'Closed on '+WDN[date.wd]+'s'}:{lvl:1,t:'Sometimes closed on '+WDN[date.wd]+'s'});
+          if(h.season&&!h.season[date.m])warn.push({lvl:h.f.indexOf('S')>=0?2:1,t:h.snote||'Out of season'});
+        }
+        var o=openAt(h,begin);
+        if(!o.inside&&o.next!==null){
+          var wait=o.next-begin;begin=o.next;
+          if(wait>20)warn.push({lvl:1,t:'Opens '+fmtT(o.next)+' — '+durTxt(wait)+' wait'});
+          o=openAt(h,begin);
+        }
+        if(!o.inside)warn.push({lvl:2,t:'Closed by '+fmtT(begin)+(o.lastEnd!==null?' — closes '+fmtT(o.lastEnd):'')});
+        else if(isFinite(o.end)&&begin+dur>o.end){
+          var left=o.end-begin;
+          warn.push({lvl:left<15?2:1,t:'Closes '+fmtT(o.end)+' — '+(left<15?'arrives '+fmtT(begin):'only '+durTxt(left)+' there')});
+        }
+        if(h.f.indexOf('e')>=0&&begin>(o.open?o.open+60:510))warn.push({lvl:1,t:'Busy by now — best early'});
+        if(h.f.indexOf('n')>=0&&begin<17*60)warn.push({lvl:1,t:'Best after dark'});
+        if(h.f.indexOf('w')>=0)warn.push({lvl:1,t:'Can close at short notice — check on the day'});
+        if(h.f.indexOf('b')>=0)warn.push({lvl:0,t:'Book ahead'});
+      }
+      warn.sort(function(a,b){return b.lvl-a.lvl});
+      for(var q=0;q<warn.length;q++)if(warn[q].lvl===2)hard++;
+      entries.push({i:idxs[k],id:p.id,leg:lg,arrive:arrive,start:begin,depart:begin+dur,dur:dur,warn:warn});
+      t=begin+dur;prev=p;
+    }
+    var dw=[];
+    if(t>DAY_END)dw.push({lvl:1,t:'Runs to '+fmtT(t)+(t>=1440?' (after midnight)':'')+' — a long day'});
+    out.push({di:di,date:date,start:dayStart,end:t,entries:entries,warn:dw,hard:hard,fits:hard===0&&t<=DAY_END});
+    if(prev)prevLast=prev;
+  }
+  return out;
+}
+
 /* Day breaks are positions, so removing a stop has to slide the later ones back.
    There are two ways to remove one — the × in the list, and deleting the place
    itself out from under the itinerary — so the shift lives here rather than at
