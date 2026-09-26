@@ -3471,7 +3471,9 @@ var REGIONS=[
 /* ---- places ----
    Everything is keyed by a stable id, never by array position: your own places get
    added and deleted, and a saved itinerary must survive that. */
-var P=[],byId={},USER=[],TOURC={};
+/* byId has no prototype: ids arrive in shared links, and on a plain object "constructor"
+   or "__proto__" would resolve to something that is not a place. */
+var P=[],byId=Object.create(null),USER=[],TOURC={};
 function uid(){return 'u'+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36)}
 function nearestRegion(lng,lat){
   var best='tokyo',bd=1e9;
@@ -3486,7 +3488,7 @@ function nearestRegion(lng,lat){
   return bd>1.6?'elsewhere':best;
 }
 function rebuildPlaces(){
-  P=[];byId={};TOURC={};                          /* the walk is cached; its pool just changed */
+  P=[];byId=Object.create(null);TOURC={};                          /* the walk is cached; its pool just changed */
   function add(o){o.x=mx(o.lng);o.y=my(o.lat);P.push(o);byId[o.id]=o}
   for(var i=0;i<PLACES.length;i++){var r=PLACES[i];
     add({id:'b'+i,name:r[0],ja:r[1],cat:r[2],region:r[3],lat:r[4],lng:r[5],rank:r[6],
@@ -5053,7 +5055,7 @@ function afterTripEdit(){saveTrip();renderTrip();needOver=true}
    resolve and any repeats. Through removeStops, so the day breaks and the plan shift with
    the stops instead of pointing at whichever stop slid into the gap. */
 function cleanTrip(){
-  var seen={};
+  var seen=Object.create(null);
   removeStops(function(x){if(typeof x!=='string'||!byId[x]||seen[x])return true;seen[x]=1;return false});
 }
 
@@ -5707,13 +5709,18 @@ function freshTips(){return DEFAULT_TIPS.map(function(t,i){return{id:'t'+i,tag:t
 function cstr(v,n){return typeof v==='string'?v.slice(0,n):''}
 function safeId(v){return String(v).replace(/[^A-Za-z0-9_-]/g,'')}
 function okPlaces(arr){
-  var out=[];if(!Array.isArray(arr))return out;
+  var out=[],seen=Object.create(null);if(!Array.isArray(arr))return out;
   for(var i=0;i<arr.length&&out.length<400;i++){
     var q=arr[i];if(!q||typeof q!=='object')continue;
     var lat=+q.lat,lng=+q.lng;
     if(!isFinite(lat)||!isFinite(lng)||lat<-90||lat>90||lng<-180||lng>180)continue;
     var nm=cstr(q.name,90).trim();if(!nm)continue;
-    out.push({id:safeId(cstr(q.id,40))||uid(),name:nm,ja:cstr(q.ja,70).trim(),
+    /* an id may not pose as a curated place's (b0, b1…), repeat another, or be the one
+       name an object key cannot safely hold */
+    var id=safeId(cstr(q.id,40));
+    if(!id||seen[id]||/^b\d+$/.test(id)||id==='__proto__')id=uid();
+    seen[id]=1;
+    out.push({id:id,name:nm,ja:cstr(q.ja,70).trim(),
       cat:CATS[q.cat]?q.cat:'eat',note:cstr(q.note,700).trim(),
       lat:lat,lng:lng,region:cstr(q.region,12)||nearestRegion(lng,lat)});
   }
@@ -5746,6 +5753,40 @@ function okDays(v,len){
   }
   return out.sort(function(a,b){return a-b});
 }
+/* The plan as stored or sent, read against the trip list as sent — before cleanTrip
+   drops anything — so its break positions and ids mean what the sender meant; cleanTrip
+   then carries them along with everything else. Each part that does not check out falls
+   back to its default instead of failing the whole load. */
+function okT(v){return typeof v==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(v)?v:null}
+function okDate(v){
+  var m=typeof v==='string'&&/^(\d{4})-(\d\d)-(\d\d)$/.exec(v);if(!m)return null;
+  var y=+m[1],mo=+m[2],d=+m[3],t=new Date(Date.UTC(y,mo-1,d));
+  return y>=2000&&y<=2100&&t.getUTCMonth()===mo-1&&t.getUTCDate()===d?v:null;   /* no 30 February */
+}
+function okPlan(v,list,breaks){
+  var p=freshPlan(),own=Object.prototype.hasOwnProperty,k,t;
+  if(!v||typeof v!=='object'||Array.isArray(v))return p;
+  p.start=okDate(v.start);
+  p.dayStart=okT(v.dayStart)||p.dayStart;
+  if(typeof v.pace==='string'&&own.call(PACE,v.pace))p.pace=v.pace;
+  if(typeof v.key==='string'&&/^[a-z0-9]{6,24}$/.test(v.key))p.key=v.key;
+  var ds=v.dayStarts,st=v.stops;
+  if(ds&&typeof ds==='object'){
+    var keys=[0].concat(breaks);
+    for(k=0;k<keys.length;k++)if(own.call(ds,keys[k])&&(t=okT(ds[keys[k]])))p.dayStarts[keys[k]]=t;
+  }
+  if(st&&typeof st==='object'){
+    for(k=0;k<list.length;k++){
+      var id=list[k];
+      if(!id||id==='__proto__'||!own.call(st,id)||own.call(p.stops,id))continue;
+      var s=st[id],o={};if(!s||typeof s!=='object')continue;
+      if(typeof s.dur==='number'&&s.dur===Math.floor(s.dur)&&s.dur>=5&&s.dur<=720)o.dur=s.dur;
+      if(t=okT(s.at))o.at=t;
+      if(o.dur||o.at)p.stops[id]=o;
+    }
+  }
+  return p;
+}
 function okGuide(g){
   if(!g||typeof g!=='object')return GUIDE;
   return {sub:cstr(g.sub,70).trim()||GUIDE.sub,title:cstr(g.title,60).trim()||GUIDE.title,
@@ -5764,7 +5805,7 @@ function saveMine(){
     if(!shWarned){shWarned=true;toast('This is a shared guide — changes stay on this page until you Save a copy here.')}
     return;
   }
-  try{localStorage.setItem(STORE,JSON.stringify({v:1,places:USER,tips:TIPS,guide:GUIDE,trip:trip,days:dayBreaks}))}
+  try{localStorage.setItem(STORE,JSON.stringify({v:1,places:USER,tips:TIPS,guide:GUIDE,trip:trip,days:dayBreaks,plan:plan}))}
   catch(e){toast('Could not save — this browser’s storage is full or blocked.')}
 }
 /* Keep the shared guide: stop treating it as borrowed, write it, and drop the link from
@@ -5780,8 +5821,9 @@ function loadMine(){
     if(!d)return false;
     USER=okPlaces(d.places);TIPS=okTips(d.tips);GUIDE=okGuide(d.guide);
     rebuildPlaces();
-    trip=rawTrip(d.trip);plan=freshPlan();
+    trip=rawTrip(d.trip);
     dayBreaks=okDays(d.days,trip.length);
+    plan=okPlan(d.plan,trip,dayBreaks);   /* an older record has none: a fresh plan */
     cleanTrip();
     return true;
   }catch(e){return false}
@@ -5806,6 +5848,33 @@ function packed(){
      stays as short as it ever was. An older page ignores the key; a newer page
      opening an older link just reads one day. */
   if(dayBreaks.length)o.d=dayBreaks;
+  var s=packPlan();if(s)o.s=s;
+  return o;
+}
+/* The schedule travels the same way: only what differs from a fresh plan, so a trip
+   nobody has planned sends exactly the link it always did. Stops are named by id, day
+   times by break position like o.d. The calendar key stays home — it is what makes this
+   browser's re-export update its own events. */
+function packPlan(){
+  var s={},ds=[],m=[],k,o;
+  if(plan.start)s.st=plan.start;
+  if(plan.dayStart!=='09:00')s.dt=plan.dayStart;
+  if(plan.pace!=='standard')s.pc=plan.pace;
+  for(k in plan.dayStarts)ds.push([+k,plan.dayStarts[k]]);
+  if(ds.length)s.ds=ds.sort(function(a,b){return a[0]-b[0]});
+  for(k=0;k<trip.length;k++){o=plan.stops[trip[k]];if(o&&(o.dur||o.at))m.push([trip[k],o.dur||0,o.at||''])}
+  if(m.length)s.m=m;
+  for(k in s)return s;
+  return null;
+}
+/* Back into the stored shape, bounded; okPlan does the checking. */
+function unpackPlan(s){
+  if(!s||typeof s!=='object'||Array.isArray(s))return null;
+  var o={start:s.st,dayStart:s.dt,pace:s.pc,dayStarts:{},stops:Object.create(null)},i,a;
+  if(Array.isArray(s.ds))for(i=0;i<s.ds.length&&i<200;i++){
+    a=s.ds[i];if(Array.isArray(a)&&typeof a[0]==='number')o.dayStarts[a[0]]=a[1]}
+  if(Array.isArray(s.m))for(i=0;i<s.m.length&&i<600;i++){
+    a=s.m[i];if(Array.isArray(a)&&typeof a[0]==='string')o.stops[a[0]]={dur:a[1],at:a[2]}}
   return o;
 }
 function unpacked(o){
@@ -5817,7 +5886,8 @@ function unpacked(o){
     tips:Array.isArray(o.t)?o.t.map(function(a){
       return {tag:a[0],title:a[1],body:a[2],id:a[3]}}):freshTips(),
     trip:Array.isArray(o.r)?o.r:[],
-    days:Array.isArray(o.d)?o.d:[]
+    days:Array.isArray(o.d)?o.d:[],
+    plan:unpackPlan(o.s)
   };
 }
 function b64enc(str){
@@ -5849,8 +5919,9 @@ function readFragment(){
     /* Breaks are positions in the list as sent, so read them against that list and then
        let cleanTrip drop what doesn't resolve — filtering first shifted every later
        break onto the wrong stop. */
-    trip=rawTrip(d.trip);plan=freshPlan();
+    trip=rawTrip(d.trip);
     dayBreaks=okDays(d.days,trip.length);
+    plan=okPlan(d.plan,trip,dayBreaks);
     cleanTrip();
     return true;
   }catch(e){return false}
