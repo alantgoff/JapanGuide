@@ -307,6 +307,9 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .tgroup .dsum{font-size:9px;color:var(--ink-faint);white-space:nowrap}
 .tgroup:hover .eyebrow{color:var(--ink)}
 .tgroup:hover .dsum{color:var(--ink-dim)}
+/* a day that will not work as planned says so in its heading, in the one colour that
+   means "look here" */
+.tgroup .dsum.bad,.tgroup:hover .dsum.bad{color:var(--shu)}
 .titem{display:flex;align-items:center;padding:0 10px 0 16px;width:100%;font-size:12px;cursor:grab}
 .titem:hover{background:var(--shu-wash)}
 /* Dragging a stop into place. The arrows stay — they are the keyboard and touch
@@ -321,10 +324,15 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   font-variant-numeric:tabular-nums;align-self:flex-start;padding-top:2px}
 .titem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .titem.mine .nm{color:var(--shu)}
-/* How far it is from the stop above, on foot. The number that decides whether two
-   places belong in the same afternoon. */
-.titem .leg{display:block;font-family:var(--f-mono);font-size:9px;font-style:normal;
-  color:var(--ink-faint);letter-spacing:.02em;margin-top:2px}
+/* How you get here from the stop above — the number that decides whether two places
+   belong in the same afternoon — and, once the trip has dates, when you are here. */
+.titem .leg,.titem .twarn{display:block;font-family:var(--f-mono);font-size:9px;font-style:normal;
+  color:var(--ink-faint);letter-spacing:.02em;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+/* The one thing most worth knowing about this stop on this day. Every warning is in
+   the title; the planner has room for them all. */
+.titem .twarn{margin-top:1px}
+.titem .twarn.l2{color:var(--shu)}
+.titem .twarn.l1{color:var(--ink-dim)}
 .tacts{display:flex;flex:none;opacity:0;transition:opacity .15s}
 .titem:hover .tacts,.tacts:focus-within{opacity:1}
 .tb{color:var(--ink-faint);font-size:12px;width:19px;height:24px;flex:none;line-height:1;
@@ -5097,12 +5105,6 @@ function tripDays(){
    quoting a two-hour walking time instead is worse than quoting nothing. */
 var WALK_DETOUR=1.30,WALK_KMH=4.5,WALK_MAX=3;
 function walkMin(a,b){return haversine(a,b)*WALK_DETOUR/WALK_KMH*60}
-function legText(a,b){
-  var straight=haversine(a,b);
-  if(straight>WALK_MAX)return (straight<10?straight.toFixed(1):String(Math.round(straight)))+' km · take the train';
-  var km=straight*WALK_DETOUR;
-  return Math.round(km/WALK_KMH*60)+' min · '+(km<1?Math.round(km*1000/10)*10+' m':km.toFixed(1)+' km');
-}
 function domRegion(stops){
   var c={},best=null,n=0,i;
   for(i=0;i<stops.length;i++){var r=stops[i].region;c[r]=(c[r]||0)+1;if(c[r]>n){n=c[r];best=r}}
@@ -5243,7 +5245,8 @@ function schedule(){
           var left=o.end-begin;
           warn.push({lvl:left<15?2:1,t:'Closes '+fmtT(o.end)+' — '+(left<15?'arrives '+fmtT(begin):'only '+durTxt(left)+' there')});
         }
-        if(h.f.indexOf('e')>=0&&begin>(o.open?o.open+60:510))warn.push({lvl:1,t:'Busy by now — best early'});
+        /* worth saying once the morning has gone, not to someone arriving at nine */
+        if(h.f.indexOf('e')>=0&&begin>Math.max(600,(o.open||0)+60))warn.push({lvl:1,t:'Busy by now — best early'});
         if(h.f.indexOf('n')>=0&&begin<17*60)warn.push({lvl:1,t:'Best after dark'});
         if(h.f.indexOf('w')>=0)warn.push({lvl:1,t:'Can close at short notice — check on the day'});
         if(h.f.indexOf('b')>=0)warn.push({lvl:0,t:'Book ahead'});
@@ -5325,6 +5328,19 @@ function toggleDay(id){
   if(k>=0){dayBreaks.splice(k,1);delete plan.dayStarts[i]}else dayBreaks.push(i);
   afterTripEdit();
 }
+/* A leg as the list says it: a walk is timed, a ride across town is an estimate, and
+   a train names its line. */
+function legLabel(lg){
+  if(!lg)return '';
+  if(lg.mode==='walk')return durTxt(lg.min)+' walk';
+  return (lg.mode==='local'||lg.rough?'≈':'')+durTxt(lg.min)+' '+lg.label;
+}
+/* "5–7 Oct", "30 Oct – 2 Nov", "Mon 5 Oct" */
+function dateSpan(a,b){
+  if(!a)return '';
+  if(!b||a.iso===b.iso)return a.label;
+  return a.m===b.m?a.d+'–'+b.d+' '+MON[b.m-1]:a.d+' '+MON[a.m-1]+' – '+b.d+' '+MON[b.m-1];
+}
 function renderTrip(){
   normDays();
   var list=document.getElementById('triplist'),km=0,prev=null;
@@ -5333,13 +5349,20 @@ function renderTrip(){
     if(prev)km+=haversine(prev,q);
     prev=q;
   }
-  var days=tripDays();
+  var days=tripDays(),dated=!!plan.start&&trip.length>0;
   document.getElementById('tripn').textContent=trip.length?
     trip.length+(trip.length===1?' stop':' stops')+
     (days.length>1?' · '+days.length+' days':'')+
-    (km>1?' · '+Math.round(km)+' km':''):'0 stops';
+    (dated?' · '+dateSpan(dayDate(0),dayDate(days.length-1)):km>1?' · '+Math.round(km)+' km':''):'0 stops';
   document.getElementById('sheetn').textContent=trip.length;
+  dropChrome();                         /* the panel changes height with what is in it */
   if(!trip.length){list.innerHTML='<p class="empty">Nothing saved yet. Open a mark and add it — saved stops fill in, take a number, and join up in order. Split them into days with 日.</p>';return}
+
+  /* The schedule gives every leg its mode — walk, the metro, the train between cities,
+     including the train that opens a day spent somewhere new. Times and warnings only
+     show once the trip has a start date: before that they would be answers to a
+     question nobody has asked yet. */
+  var S=schedule();
 
   var h='';
   days.forEach(function(idxs,di){
@@ -5348,29 +5371,46 @@ function renderTrip(){
        then came off a shifted array and quietly described the wrong walk. */
     var stops=[],k;
     for(k=0;k<idxs.length;k++){var p=byId[trip[idxs[k]]];if(p)stops.push({i:idxs[k],p:p})}
-    /* Only foot legs count toward the day's walking — an intercity hop is a train,
-       and folding it in would make every number meaningless. */
-    var mins=0;
-    for(k=1;k<stops.length;k++)
-      if(haversine(stops[k-1].p,stops[k].p)<=WALK_MAX)mins+=walkMin(stops[k-1].p,stops[k].p);
+    var sd=S[di],ent={},mins=0;
+    for(k=0;k<sd.entries.length;k++){var en=sd.entries[k];ent[en.i]=en;
+      /* only foot legs count toward the day's walking — a train folded in would make
+         the number meaningless */
+      if(en.leg&&en.leg.mode==='walk')mins+=en.leg.min;}
     var rg=domRegion(stops.map(function(s){return s.p}));
+    var sum,sumT='',issues=sd.hard+(sd.end>DAY_END?1:0);
+    if(dated){
+      sum=sd.date.label+' · '+fmtT(sd.start)+'–'+fmtT(sd.end);
+      sumT=issues?issues+(issues===1?' problem':' problems')+' with this day'+
+        (sd.end>DAY_END?' — it runs to '+fmtT(sd.end):'')+'. The stops below say what.'
+        :'Fits the day, '+fmtT(sd.start)+' to '+fmtT(sd.end)+'.';
+    }else sum=stops.length+' stop'+(stops.length===1?'':'s')+(mins>=1?' · '+Math.round(mins)+' min walk':'');
     /* The heading is the handle for the day: press it and the map frames exactly
        that day's ground, which is the question you are actually asking when you
        look at a day — does this hang together, or am I crossing the city twice. */
     h+='<button class="tgroup" type="button" data-fit="'+di+'" title="Frame this day on the map">'+
        '<span class="eyebrow">Day '+(di+1)+
        (rg?' <span class="ja">'+esc(rg.ja)+'</span>':'')+'</span>'+
-       '<span class="dsum mono">'+stops.length+' stop'+(stops.length===1?'':'s')+
-       (mins>=1?' · '+Math.round(mins)+' min walk':'')+'</span></button>';
+       '<span class="dsum mono'+(dated&&issues?' bad':'')+'"'+(sumT?' title="'+esc(sumT)+'"':'')+'>'+esc(sum)+'</span></button>';
 
     stops.forEach(function(st,k){
       var ti=st.i,p=st.p,id=trip[ti];
-      var opensDay=k===0&&di>0;
+      var opensDay=k===0&&di>0,e=ent[ti],lg=e&&e.leg,lt='',tt='',wt='';
+      if(dated&&e){
+        lt=fmtT(e.start)+(lg?' · '+legLabel(lg):'');
+        tt=(lg?legLabel(lg)+(lg.move?' from where the day before ended':'')+', arriving '+fmtT(e.arrive)+'. ':'')+
+           'Here '+fmtT(e.start)+'–'+fmtT(e.depart)+' ('+durTxt(e.dur)+').';
+        if(e.warn.length)
+          wt='<em class="twarn l'+e.warn[0].lvl+'" title="'+esc(e.warn.map(function(w){return w.t}).join('\n'))+'">'+
+             esc(e.warn[0].t)+(e.warn.length>1?' · +'+(e.warn.length-1):'')+'</em>';
+      }else if(lg){
+        lt=legLabel(lg)+(lg.mode==='walk'?' · '+(lg.km*WALK_DETOUR<1?Math.round(lg.km*WALK_DETOUR*100)*10+' m':(lg.km*WALK_DETOUR).toFixed(1)+' km'):'');
+        tt=lg.move?'The journey from where the day before ended':'';
+      }
       h+='<div class="titem'+(p.mine?' mine':'')+'" draggable="true" data-i="'+ti+'">'+
          '<button class="tsel" type="button" data-id="'+esc(id)+'">'+
            '<span class="idx">'+(ti+1)+'</span>'+
            '<span class="nm">'+esc(p.name)+
-             (k>0?'<em class="leg">'+esc(legText(stops[k-1].p,p))+'</em>':'')+
+             (lt?'<em class="leg"'+(tt?' title="'+esc(tt)+'"':'')+'>'+esc(lt)+'</em>':'')+wt+
            '</span>'+
          '</button>'+
          '<span class="tacts">'+
