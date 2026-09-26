@@ -446,6 +446,39 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .plink:hover{color:var(--shu)}
 #tripplan{color:var(--shu)}
 #sheet .ptext{white-space:pre;word-break:normal;overflow:auto;max-height:220px;margin-top:22px}
+
+/* ---- printed day sheets: built on beforeprint, gone on afterprint ---- */
+#printdays{display:none}
+@media print{
+  @page{margin:14mm}
+  body.pdays{overflow:visible;height:auto;background:#fff}
+  body.pdays>*:not(#printdays){display:none!important}
+  body.pdays #printdays{display:block;color:#221F1B;font-family:var(--f-body)}
+  .prday{break-after:page}
+  .prday:last-child{break-after:auto}
+  .prday header{margin-bottom:10px}
+  .prday h2{font-family:var(--f-disp);font-weight:400;font-size:24px;margin:6px 0 4px}
+  .prday h2 .ja{font-size:16px;color:#5C574E}
+  .prmeta{font-family:var(--f-mono);font-size:10px;color:#5C574E;margin:0}
+  .prmeta b{color:#B5372A;font-weight:600}
+  .prmap canvas{display:block;width:100%;height:auto;border:1px solid rgba(34,31,27,.26);margin:10px 0 14px}
+  .prstops{list-style:none;margin:0;padding:0}
+  .prstop{display:flex;gap:14px;padding:6px 0;break-inside:avoid}
+  .prt{width:44px;flex:none;text-align:right;font-family:var(--f-mono);font-size:10.5px;line-height:1.5}
+  .prstop h3{margin:0;font-size:13.5px;font-weight:600}
+  .prstop h3 .ja{font-weight:400;font-size:11px;color:#5C574E}
+  .prn{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:8px;background:#221F1B;color:#fff;
+    font-family:var(--f-mono);font-size:9px;text-align:center;margin-right:7px;vertical-align:1px;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .prh,.prnote,.prw{margin:2px 0 0;font-size:10.5px;line-height:1.5}
+  .prh{color:#5C574E}
+  .prw.l2{color:#B5372A;font-weight:600}
+  .prw.l1{color:#221F1B;font-style:italic}
+  .prw.l0{color:#5C574E;font-style:italic}
+  .prnote{color:#221F1B}
+  .prleg{font-family:var(--f-mono);font-size:9.5px;color:#5C574E;padding:1px 0 1px 58px}
+  .prfoot{font-size:9px;color:#918A7B;margin-top:14px}
+}
 /* a long plan scrolls under its buttons rather than taking them with it */
 #sheet .sft.pft{position:sticky;bottom:0;background:var(--panel-solid);z-index:1}
 
@@ -3623,6 +3656,9 @@ var GEN=[1,0,0,1,1,0,0,0];   /* which buckets the per-frame lattice can emit */
    than one that is slightly soft and stays put. */
 var DPR_CAP=1.5;
 function resize(){
+  /* printing day sheets hides the stage; sizing the canvases to nothing then would
+     leave the map blank when the print dialog closes */
+  if(!stage.clientWidth||!stage.clientHeight)return;
   dpr=Math.min(window.devicePixelRatio||1,DPR_CAP);
   W=stage.clientWidth;H=stage.clientHeight;
   [bc,oc].forEach(function(cv){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)});
@@ -3872,6 +3908,8 @@ function glyph(g,x,y,r,fill){
 
 /* ---- overlay: route, markers, labels ---- */
 var marks=[],phase=0;
+/* While a day sheet is being drawn: {di, ids} — only that day's stops and route. */
+var SNAP=null;
 function labelFits(rects,x,y,w,h){
   for(var i=0;i<rects.length;i++){var r=rects[i];
     if(x<r[0]+r[2]+3&&x+w+3>r[0]&&y<r[1]+r[3]+2&&y+h+2>r[1])return false}
@@ -3977,9 +4015,12 @@ function renderOver(){
   marks.length=0;
   for(var mi=0;mi<P.length;mi++){
     var mp=P[mi];
-    if(!filters[mp.cat])continue;
-    if(s<60&&mp.rank>1)continue;
-    if(s<150&&mp.rank>2)continue;
+    if(SNAP){if(!SNAP.ids[mp.id])continue}
+    else{
+      if(!filters[mp.cat])continue;
+      if(s<60&&mp.rank>1)continue;
+      if(s<150&&mp.rank>2)continue;
+    }
     var msx=sxOf(mp.x),msy=syOf(mp.y);
     if(msx<-24||msx>W+24||msy<-24||msy>H+24)continue;
     marks.push({p:mp,x:msx,y:msy,lr:null});
@@ -4044,10 +4085,10 @@ function renderOver(){
      doesn't read as a walk you were planning to take. */
   if(trip.length>1){
     ox.save();
-    ox.strokeStyle=COL.shu;ox.globalAlpha=.42;ox.lineWidth=1.3;
-    ox.setLineDash([6,4]);ox.lineDashOffset=reduce?0:-phase*.35;
-    tripDays().forEach(function(idxs){
-      if(idxs.length<2)return;
+    ox.strokeStyle=COL.shu;ox.globalAlpha=SNAP?.72:.42;ox.lineWidth=SNAP?1.6:1.3;
+    ox.setLineDash([6,4]);ox.lineDashOffset=reduce||SNAP?0:-phase*.35;
+    tripDays().forEach(function(idxs,di){
+      if(idxs.length<2||(SNAP&&di!==SNAP.di))return;
       ox.beginPath();
       var started=false;
       for(var t=0;t<idxs.length;t++){
@@ -5588,6 +5629,44 @@ function dayBox(di){
   return [w,s,e,n];
 }
 function fitDay(di){var b=dayBox(di);if(!b)return;flyTo(fit(b,.34),760);killHint()}
+/* One day's ground for its printed sheet, drawn by the same renderer into canvases of
+   its own. Everything the renderer reads about the live view is swapped out and put
+   back afterwards, so the map on screen is not touched: the canvases and their size,
+   the view, the selection, the text-metric font, the fill's feedback and its budgets.
+   The budgets are per screen, so they shrink with this smaller one — all but the
+   ground floor: a small sheet of a city holds more drawing per pixel than the screen
+   does, so the budget is spent before the fill starts, and a scaled floor then drops
+   under the fill's minimum and switches the ground off. Kept whole, it lands within a
+   few percent of the screen's density. */
+function dayMap(di,cw,ch){
+  var box=dayBox(di);if(!box)return null;
+  cw=cw||680;ch=ch||400;
+  var k=2,b=document.createElement('canvas'),o=document.createElement('canvas'),out=document.createElement('canvas');
+  [b,o,out].forEach(function(c){c.width=cw*k;c.height=ch*k});
+  var was={bx:bx,ox:ox,W:W,H:H,V:V,sel:sel,hover:hover,yieldEst:yieldEst,T:TARGET,TN:TARGET_NEAR,GF:GROUND_FLOOR,SNAP:SNAP};
+  try{
+    bx=b.getContext('2d');ox=o.getContext('2d');
+    bx.setTransform(k,0,0,k,0,0);ox.setTransform(k,0,0,k,0,0);
+    W=cw;H=ch;TMFont='';sel=null;hover=null;
+    var v=fit(box,.22);v.s=Math.min(v.s,40000);V=v;
+    var ids={},idxs=tripDays()[di];
+    for(var i=0;i<idxs.length;i++)ids[trip[idxs[i]]]=1;
+    SNAP={di:di,ids:ids};
+    var a=cw*ch/(1440*900);                       /* the budgets were set on a laptop screen */
+    TARGET=Math.round(was.T*a);TARGET_NEAR=Math.round(was.TN*a);
+    renderBase();renderBase();                    /* the first settles the fill's hit rate */
+    renderOver();
+    var g=out.getContext('2d');
+    g.fillStyle=COL.ground;g.fillRect(0,0,out.width,out.height);
+    g.drawImage(b,0,0);g.drawImage(o,0,0);
+  }finally{
+    bx=was.bx;ox=was.ox;W=was.W;H=was.H;V=was.V;sel=was.sel;hover=was.hover;yieldEst=was.yieldEst;
+    TARGET=was.T;TARGET_NEAR=was.TN;GROUND_FLOOR=was.GF;SNAP=was.SNAP;
+    TMFont='';                                    /* ox.font is the live one again; make setFont reassign */
+    renderOver();needOver=true;                   /* marks and city boxes are hit-tested: rebuild them */
+  }
+  return out;
+}
 /* Clearing the trip clears what was set for its stops and days, but not the trip's own
    settings — the date and the pace are about the journey, not this list. */
 document.getElementById('tripclear').onclick=function(){
@@ -6494,11 +6573,13 @@ function plannerSheet(){
     '</div>'+
     '<div class="sft pft"><button id="pcopy">Copy as text</button>'+
       '<button id="pics">Calendar (.ics)</button>'+
+      '<button id="pprint">Print days</button>'+
       '<span class="spacer"></span><button id="pdone" class="primary">Done</button></div>',
     function(el){
       el.querySelector('#pdone').onclick=closeSheet;
       el.querySelector('#pcopy').onclick=function(){copyOut(this,planText(),el.querySelector('#ptext'))};
       el.querySelector('#pics').onclick=function(){if(plan.start)saveICS()};
+      el.querySelector('#pprint').onclick=function(){if(trip.length)window.print()};
       el.querySelector('#pstart').onchange=function(){plan.start=okDate(this.value);planEdit()};
       el.querySelector('#pdstart').onchange=function(){var v=okT(this.value);if(v){plan.dayStart=v;planEdit()}};
       Array.prototype.forEach.call(el.querySelectorAll('[data-pace]'),function(b){
@@ -6543,6 +6624,7 @@ function drawPlanDays(){
   var dated=!!plan.start,ics=document.getElementById('pics'),cp=document.getElementById('pcopy');
   if(ics){ics.disabled=!dated;ics.title=dated?'Every stop, and every train of half an hour or more':'Add the first day’s date to make a calendar'}
   if(cp)cp.disabled=!trip.length;
+  var pr=document.getElementById('pprint');if(pr)pr.disabled=!trip.length;
   document.getElementById('pnote').textContent=(dated?'':
     'Add the first day’s date to check each day against weekly closures and seasons, and to export a calendar. ')+
     'Hours are typical — check before you go. Public holidays are not modelled.';
@@ -6702,6 +6784,55 @@ function fileStem(){
     (plan.start?'-'+plan.start:'');
 }
 function saveICS(){saveFile(fileStem()+'.ics',icsText(),'text/calendar;charset=utf-8')}
+
+/* ---- day sheets for printing ----
+   Built when the browser is about to print — from the button, or from the browser's own
+   Print — and only when there is a trip to print; a print with no trip is the map, as
+   before. One page a day: its date and hours, its own map, and the schedule with the
+   guide's notes for each stop. */
+function buildPrint(){
+  clearPrint();
+  if(!trip.length)return false;
+  var S=schedule(),dated=!!plan.start,title=GUIDE.title.replace(/\n/g,' '),root=document.createElement('div');
+  root.id='printdays';
+  S.forEach(function(sd,di){
+    var stops=sd.entries.map(function(e){return byId[e.id]}),rg=domRegion(stops),walk=0;
+    sd.entries.forEach(function(e){if(e.leg&&e.leg.mode==='walk')walk+=e.leg.min});
+    var sec=document.createElement('section'),h='';
+    sec.className='prday';
+    h+='<header><span class="eyebrow">'+esc(title)+' · Day '+(di+1)+' of '+S.length+'</span>'+
+       '<h2>'+esc(dated?sd.date.label:'Day '+(di+1))+(rg?' — '+esc(rg.name)+' <span class="ja">'+esc(rg.ja)+'</span>':'')+'</h2>'+
+       '<p class="prmeta">'+fmtT(sd.start)+'–'+fmtT(sd.end)+' · '+stops.length+(stops.length===1?' stop':' stops')+
+         (walk?' · '+durTxt(walk)+' walking':'')+
+         (sd.hard?' · <b>'+sd.hard+(sd.hard===1?' stop that will not work':' stops that will not work')+'</b>':'')+
+         (sd.end>DAY_END?' · <b>runs to '+fmtT(sd.end)+'</b>':'')+'</p></header>'+
+       '<div class="prmap"></div><ol class="prstops">';
+    sd.entries.forEach(function(e){
+      var p=byId[e.id];
+      if(e.leg)h+='<li class="prleg">↓ '+esc(legLabel(e.leg))+(e.leg.move?' — from where the day before ended':'')+'</li>';
+      h+='<li class="prstop"><span class="prt">'+fmtT(e.start)+'<br>'+fmtT(e.depart)+'</span><div>'+
+         '<h3><span class="prn">'+(e.i+1)+'</span>'+esc(p.name)+(p.ja?' <span class="ja">'+esc(p.ja)+'</span>':'')+'</h3>'+
+         (p.hrs?'<p class="prh">Typical hours: '+esc(hoursText(p.hrs))+'</p>':'')+
+         e.warn.map(function(w){return '<p class="prw l'+w.lvl+'">'+esc(w.t)+'</p>'}).join('')+
+         (p.why?'<p class="prnote">'+esc(p.why)+'</p>':'')+(p.note?'<p class="prnote">'+esc(p.note)+'</p>':'')+
+         '</div></li>';
+    });
+    h+='</ol><p class="prfoot">Hours are typical — check before you go. Public holidays are not modelled.</p>';
+    sec.innerHTML=h;
+    var cv=dayMap(di);
+    if(cv){cv.setAttribute('role','img');cv.setAttribute('aria-label','Map of day '+(di+1));sec.querySelector('.prmap').appendChild(cv)}
+    root.appendChild(sec);
+  });
+  document.body.appendChild(root);
+  document.body.classList.add('pdays');
+  return true;
+}
+function clearPrint(){
+  var r=document.getElementById('printdays');if(r)r.remove();
+  document.body.classList.remove('pdays');
+}
+window.addEventListener('beforeprint',buildPrint);
+window.addEventListener('afterprint',function(){clearPrint();resize();needOver=true});
 document.getElementById('tripplan').onclick=plannerSheet;
 document.getElementById('addplace').onclick=function(){placing?endPlacing():startPlacing(null)};
 document.getElementById('tipsbtn').onclick=tipsSheet;

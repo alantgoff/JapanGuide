@@ -1,6 +1,6 @@
 /* The hard constraint: the guide opens straight from a file and nothing leaves the page.
-   No server and no test hook here — this is the file exactly as shipped. Later suites
-   add the exports to this check: every export must also be generated locally. */
+   No server and no test hook here — this is the file exactly as shipped. The exports
+   and the printed day sheets are driven through it too: each must be made locally. */
 const { suite } = require('./lib');
 const path = require('path');
 
@@ -43,6 +43,10 @@ suite('filecheck', async t => {
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#pics')]);
   const ics = require('fs').readFileSync(await dl.path(), 'utf8');
   t.ok(/^BEGIN:VCALENDAR\r\n/.test(ics) && (ics.match(/BEGIN:VEVENT/g) || []).length === 5, 'the planner opens and the calendar downloads from a file', dl.suggestedFilename());
+  // printing fires beforeprint, which draws a map for each day
+  const pdf = await page.pdf({ format: 'A4' });
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  t.ok(pages === 2, 'the two days print as two pages', pages);
   await page.waitForTimeout(300);
   t.ok(errs.length === 0 && stray.length === 0, 'still no errors and no requests', { errs: errs.slice(0, 3), stray: stray.slice(0, 5) });
 });
