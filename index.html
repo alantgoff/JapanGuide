@@ -4807,7 +4807,8 @@ function loadTrip(){
     var v=JSON.parse(localStorage.getItem('japan-survey-trip'));
     if(Array.isArray(v))trip=v.map(function(n){
       return typeof n==='number'?'b'+n:n; /* earlier versions stored array positions */
-    }).filter(function(id){return typeof id==='string'&&byId[id]});
+    });
+    cleanTrip();
   }catch(e){}
 }
 /* The standalone key is still written so a guide saved by an earlier version opens
@@ -4821,6 +4822,29 @@ function saveTrip(){
   saveMine();
 }
 
+/* The schedule laid over the trip. All of it is optional — a trip with no plan behaves
+   exactly as it always has.
+     start      the first day's date, 'YYYY-MM-DD'; turns days into dates, so weekday
+                closures and a calendar export become possible
+     dayStart   when a day begins unless that day says otherwise
+     pace       'relaxed' | 'standard' | 'packed'; scales the suggested time at each stop
+     dayStarts  a day's own start time, keyed by the trip position of its break (0 is day
+                one). Keyed by the break, not by the stop that opens the day: moving a stop
+                leaves the breaks where they are, so the time stays with the day you see.
+     stops      per-stop choices keyed by place id — dur (minutes) and at (a fixed time)
+     key        seed for calendar event ids, so re-exporting updates rather than duplicates */
+function freshPlan(){return {start:null,dayStart:'09:00',pace:'standard',dayStarts:{},stops:{},key:null}}
+var plan=freshPlan();
+/* Every edit to the trip ends the same way. */
+function afterTripEdit(){saveTrip();renderTrip();needOver=true}
+/* A loaded trip is somebody else's list, or an older version's: drop ids that no longer
+   resolve and any repeats. Through removeStops, so the day breaks and the plan shift with
+   the stops instead of pointing at whichever stop slid into the gap. */
+function cleanTrip(){
+  var seen={};
+  removeStops(function(x){if(typeof x!=='string'||!byId[x]||seen[x])return true;seen[x]=1;return false});
+}
+
 /* A trip is one ordered list of stops; the days are simply where you decide to
    stop walking. Keeping the breaks as positions rather than tagging each stop
    means reordering moves a stop between days exactly as you would expect, and a
@@ -4832,6 +4856,8 @@ function normDays(){
     if(b>0&&b<trip.length&&!seen[b]){seen[b]=1;out.push(b)}
   }
   dayBreaks=out.sort(function(a,b){return a-b});
+  /* a day's start time belongs to its break — when the break goes, so does the time */
+  for(var k in plan.dayStarts)if(k!=='0'&&!seen[k])delete plan.dayStarts[k];
 }
 /* Memoised on the trip and its day breaks. The route line calls this every overlay
    frame — thirty times a second for as long as a trip is on screen — to rebuild the
@@ -4890,13 +4916,34 @@ function removeStops(doomed){
     for(var q=dayBreaks[i];q<trip.length;q++)if(at[q]>=0){n=at[q];break}
     if(n>0&&!seen[n]){seen[n]=1;nb.push(n)}
   }
+  /* Day start times follow their days. A day whose opening stop survives keeps its
+     time outright. A day that loses its opener hands the time to the first stop that
+     survives in that same day — never to the next day, which is why this is two passes:
+     when a whole day goes, its break lands on the next day's opener, and that day's own
+     time has to win. A day that disappears entirely takes its time with it. */
+  var opens=[0].concat(dayBreaks),ds={},claimed={},k,b,tm;
+  for(k=0;k<opens.length;k++){
+    b=opens[k];tm=plan.dayStarts[b];
+    if(tm&&at[b]>=0&&(at[b]===0||seen[at[b]])){ds[at[b]]=tm;claimed[at[b]]=1}
+  }
+  for(k=0;k<opens.length;k++){
+    b=opens[k];tm=plan.dayStarts[b];
+    if(!tm||at[b]>=0)continue;
+    var end=k+1<opens.length?opens[k+1]:trip.length,m=-1;
+    for(var q2=b;q2<end;q2++)if(at[q2]>=0){m=at[q2];break}
+    if(m>=0&&!claimed[m]&&(m===0||seen[m])){ds[m]=tm;claimed[m]=1}
+  }
+  plan.dayStarts=ds;
   trip=out;dayBreaks=nb.sort(function(a,b){return a-b});
+  /* per-stop choices go with a stop that has left the trip (but not when it was only a
+     repeat of one that stayed) */
+  for(var sid in plan.stops)if(trip.indexOf(sid)<0)delete plan.stops[sid];
   return true;
 }
 function toggleTrip(id){
   if(trip.indexOf(id)>=0)removeStops(function(x){return x===id});
   else trip.push(id);
-  saveTrip();renderTrip();needOver=true;
+  afterTripEdit();
 }
 function moveTrip(id,dir){
   var i=trip.indexOf(id),j=i+dir;
@@ -4904,14 +4951,14 @@ function moveTrip(id,dir){
   /* The breaks stay where they are, so dragging a stop past one moves it to that
      day — which is what the gesture looks like it should do. */
   trip.splice(j,0,trip.splice(i,1)[0]);
-  saveTrip();renderTrip();needOver=true;
+  afterTripEdit();
 }
 function toggleDay(id){
   var i=trip.indexOf(id);
   if(i<=0)return;                       /* the first stop always opens day one */
   var k=dayBreaks.indexOf(i);
-  if(k>=0)dayBreaks.splice(k,1);else dayBreaks.push(i);
-  saveTrip();renderTrip();needOver=true;
+  if(k>=0){dayBreaks.splice(k,1);delete plan.dayStarts[i]}else dayBreaks.push(i);
+  afterTripEdit();
 }
 function renderTrip(){
   normDays();
@@ -5002,7 +5049,7 @@ function moveTripTo(from,to){
   var id=trip.splice(from,1)[0];
   if(to>from)to--;
   trip.splice(Math.max(0,Math.min(trip.length,to)),0,id);
-  saveTrip();renderTrip();needOver=true;
+  afterTripEdit();
 }
 function wireTripDrag(list){
   var from=-1,panel=document.getElementById('trip');
@@ -5042,8 +5089,9 @@ function wireTripDrag(list){
     var f=from;from=-1;clear();moveTripTo(f,trip.length);
   });
 }
-function fitDay(di){
-  var idxs=tripDays()[di];if(!idxs)return;
+/* The ground one day covers, as [w,s,e,n]. */
+function dayBox(di){
+  var idxs=tripDays()[di];if(!idxs)return null;
   var w=1e9,s=1e9,e=-1e9,n=-1e9,any=false;
   for(var k=0;k<idxs.length;k++){
     var p=byId[trip[idxs[k]]];if(!p)continue;
@@ -5051,15 +5099,21 @@ function fitDay(di){
     if(p.lng<w)w=p.lng;if(p.lng>e)e=p.lng;
     if(p.lat<s)s=p.lat;if(p.lat>n)n=p.lat;
   }
-  if(!any)return;
+  if(!any)return null;
   /* A day with one stop, or several on the same corner, has no extent to fit —
      give it a few hundred metres of context rather than a division by nothing. */
   var minD=.004,cx2,cy2;
   if(e-w<minD){cx2=(w+e)/2;w=cx2-minD/2;e=cx2+minD/2}
   if(n-s<minD){cy2=(s+n)/2;s=cy2-minD/2;n=cy2+minD/2}
-  flyTo(fit([w,s,e,n],.34),760);killHint();
+  return [w,s,e,n];
 }
-document.getElementById('tripclear').onclick=function(){trip=[];dayBreaks=[];saveTrip();renderTrip();needOver=true;if(sel&&byId[sel])renderDetail(byId[sel])};
+function fitDay(di){var b=dayBox(di);if(!b)return;flyTo(fit(b,.34),760);killHint()}
+/* Clearing the trip clears what was set for its stops and days, but not the trip's own
+   settings — the date and the pace are about the journey, not this list. */
+document.getElementById('tripclear').onclick=function(){
+  trip=[];dayBreaks=[];plan.stops={};plan.dayStarts={};
+  afterTripEdit();if(sel&&byId[sel])renderDetail(byId[sel]);
+};
 document.getElementById('tripclose').onclick=function(){document.getElementById('trip').classList.remove('open')};
 document.getElementById('sheetbtn').onclick=function(){
   var t=document.getElementById('trip'),open=t.classList.toggle('open');
@@ -5314,6 +5368,11 @@ function okTips(arr){
 }
 /* Day breaks are positions in someone else's trip list, and a shared link is
    somebody else's input: bound them to that list or they index into nothing. */
+/* A trip list as sent: bounded, and with anything that is not an id kept as a hole so
+   the positions the day breaks refer to still line up. */
+function rawTrip(v){
+  return Array.isArray(v)?v.slice(0,600).map(function(x){return typeof x==='string'?x:''}):[];
+}
 function okDays(v,len){
   var out=[],seen={};if(!Array.isArray(v))return out;
   for(var i=0;i<v.length&&out.length<200;i++){
@@ -5358,8 +5417,9 @@ function loadMine(){
     if(!d)return false;
     USER=okPlaces(d.places);TIPS=okTips(d.tips);GUIDE=okGuide(d.guide);
     rebuildPlaces();
-    if(Array.isArray(d.trip))trip=d.trip.filter(function(x){return typeof x==='string'&&byId[x]});
+    trip=rawTrip(d.trip);plan=freshPlan();
     dayBreaks=okDays(d.days,trip.length);
+    cleanTrip();
     return true;
   }catch(e){return false}
 }
@@ -5423,9 +5483,12 @@ function readFragment(){
     var d=unpacked(JSON.parse(b64dec(m[1])));
     USER=okPlaces(d.places);TIPS=okTips(d.tips);GUIDE=okGuide(d.guide);
     rebuildPlaces();
-    trip=d.trip.filter(function(x){return typeof x==='string'&&byId[x]});
-    /* bound to the trip that actually survived the filter above, not the one sent */
+    /* Breaks are positions in the list as sent, so read them against that list and then
+       let cleanTrip drop what doesn't resolve — filtering first shifted every later
+       break onto the wrong stop. */
+    trip=rawTrip(d.trip);plan=freshPlan();
     dayBreaks=okDays(d.days,trip.length);
+    cleanTrip();
     return true;
   }catch(e){return false}
 }
