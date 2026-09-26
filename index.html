@@ -4272,10 +4272,18 @@ document.addEventListener('dblclick',function(e){
   }
 });
 window.addEventListener('keydown',function(e){
-  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
+  /* An open sheet owns the keyboard: Escape closes it, and nothing else reaches the map
+     behind it — Space started the tour and the arrows panned under a sheet full of
+     buttons. Form fields keep their keys, and a focused button keeps Space, which is
+     how a keyboard presses it. */
+  if(!sheetEl.hidden){if(e.key==='Escape'){closeSheet();e.preventDefault()}return}
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable)return;
   /* Space is play/pause for the tour, the way it is for anything that plays. Any other
      key while it runs means you want to steer yourself, so it stops first. */
-  if(e.key===' '||e.key==='Spacebar'){e.preventDefault();tourPlay();return}
+  if(e.key===' '||e.key==='Spacebar'){
+    if(e.target.closest&&e.target.closest('button,a,summary,[role="button"]'))return;
+    e.preventDefault();tourPlay();return;
+  }
   if(autoTour.on)tourStop();
   var pan=60/V.s,k=e.key;
   /* When a card is open the left/right arrows step through it — places within a place
@@ -4808,6 +4816,7 @@ function loadTrip(){
    you had ever saved a place was silently dropped on reload. */
 function saveTrip(){
   normDays();   /* never persist a break that is unsorted or off the end */
+  if(shared)return saveMine();          /* which only says why it isn't saving */
   try{localStorage.setItem('japan-survey-trip',JSON.stringify(trip))}catch(e){}
   saveMine();
 }
@@ -5323,9 +5332,25 @@ function okGuide(g){
 }
 
 /* ---- persistence ---- */
+/* A shared guide is someone else's until you keep it. Every edit used to save straight
+   over the guide already stored in this browser — open a friend's link, tick one stop,
+   and your own trip was gone. Now edits to a shared guide live on this page only, and
+   say so once, until Save a copy here makes it yours. */
+var shWarned=false;
 function saveMine(){
+  if(shared){
+    if(!shWarned){shWarned=true;toast('This is a shared guide — changes stay on this page until you Save a copy here.')}
+    return;
+  }
   try{localStorage.setItem(STORE,JSON.stringify({v:1,places:USER,tips:TIPS,guide:GUIDE,trip:trip,days:dayBreaks}))}
   catch(e){toast('Could not save — this browser’s storage is full or blocked.')}
+}
+/* Keep the shared guide: stop treating it as borrowed, write it, and drop the link from
+   the address bar so a reload opens the saved copy rather than the original link. Only
+   the fragment changes, which history allows even on file://. */
+function keepShared(){
+  shared=false;saveTrip();
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
 }
 function loadMine(){
   try{
@@ -5538,7 +5563,7 @@ function saveForm(){
     Array.prototype.forEach.call(document.querySelectorAll('.fchip'),function(b){
       if(b.dataset.c===cat)b.setAttribute('aria-pressed','true')})}
   select(id,false);
-  toast('Saved. It travels in your share link.');
+  toast(shared?'Added on this page — Save a copy here to keep it.':'Saved. It travels in your share link.');
 }
 
 /* ---- the centred sheet: notes, sharing, guide details ---- */
@@ -5755,9 +5780,12 @@ function shareSheet(){
     '</div>'+
     '<div class="sft"><button id="copylink" class="primary">Copy link</button>'+
     '<button id="editguide">Guide details</button><span class="spacer"></span>'+
+    (shared?'<button id="skeep">Save a copy here</button>':'')+
     '<button id="sharedone">Done</button></div>',
     function(el){
       el.querySelector('#sharedone').onclick=closeSheet;
+      var sk=el.querySelector('#skeep');
+      if(sk)sk.onclick=function(){keepShared();shareSheet();toast('Saved to this browser.')};
       el.querySelector('#editguide').onclick=guideSheet;
       el.querySelector('#copylink').onclick=function(){
         var txt=noBase?frag:link,btn=this;
@@ -5794,12 +5822,13 @@ function guideSheet(){
           title:el.querySelector('#gtitle2').value.replace(/\s*\/\s*/g,'\n'),
           intro:el.querySelector('#gintro2').value,
           kanji:el.querySelector('#gkanji2').value,seal:el.querySelector('#gseal2').value});
-        applyGuide();saveMine();shareSheet();toast('Guide details saved.');
+        applyGuide();saveMine();shareSheet();toast(shared?'Updated on this page — Save a copy here to keep it.':'Guide details saved.');
       };
     });
 }
 function welcomeSheet(){
-  var mine=USER.length,notes=TIPS.length;
+  var mine=USER.length,notes=TIPS.length,had=false;
+  try{had=localStorage.getItem(STORE)!==null}catch(e){}
   openSheet(
     '<div class="shd"><span class="eyebrow">'+esc(GUIDE.sub)+'</span>'+
     '<h2>'+esc(GUIDE.title.replace(/\n/g,' '))+'</h2><p class="ja">'+esc(GUIDE.kanji)+'</p>'+
@@ -5807,14 +5836,17 @@ function welcomeSheet(){
     '<div class="sbd"><p class="lede">'+esc(GUIDE.intro)+'</p>'+
     '<p class="stat">This guide carries <b>'+mine+'</b> personal recommendation'+(mine===1?'':'s')+
       ' and <b>'+notes+'</b> note'+(notes===1?'':'s')+' on how things work. '+
-      'Marks in vermilion are the additions; the rest is the standard route.</p></div>'+
+      'Marks in vermilion are the additions; the rest is the standard route.</p>'+
+    '<p class="stat">Changes you make stay on this page until you save a copy.</p>'+
+    (had?'<p class="warn">Saving a copy replaces the guide already saved in this browser.</p>':'')+
+    '</div>'+
     '<div class="sft"><button id="wgo" class="primary">Open the map</button>'+
     '<button id="wtips">Read the notes first</button><span class="spacer"></span>'+
     '<button id="wkeep">Save a copy here</button></div>',
     function(el){
       el.querySelector('#wgo').onclick=closeSheet;
       el.querySelector('#wtips').onclick=tipsSheet;
-      el.querySelector('#wkeep').onclick=function(){saveMine();closeSheet();
+      el.querySelector('#wkeep').onclick=function(){keepShared();closeSheet();
         toast('Saved to this browser. You can edit it and share your own version.')};
     });
 }

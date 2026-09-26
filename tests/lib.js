@@ -41,9 +41,11 @@ async function suite(name, fn) {
       });
       if (opts.storage) {
         await ctx.addInitScript(s => {
-          if (sessionStorage.getItem('__seeded')) return;
-          for (const k in s) localStorage.setItem(k, s[k]);
-          sessionStorage.setItem('__seeded', '1');
+          try {                         // about:blank and friends have no storage to seed
+            if (!/^https?:$/.test(location.protocol) || sessionStorage.getItem('__seeded')) return;
+            for (const k in s) localStorage.setItem(k, s[k]);
+            sessionStorage.setItem('__seeded', '1');
+          } catch (e) {}
         }, opts.storage);
       }
       const page = await ctx.newPage();

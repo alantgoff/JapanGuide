@@ -30,7 +30,7 @@ function start(port = 0, opts = {}) {
       const u = decodeURIComponent(req.url.split('?')[0].split('#')[0]);
       try {
         if (u === '/' || u === '/index.html') {
-          const body = page(opts.html);
+          const body = page(opts.html || process.env.JG_HTML);
           res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-store' });
           return res.end(body);
         }
